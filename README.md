@@ -38,11 +38,11 @@
 
 
 ## 环境要求
-- Python 3.10
+- Python 3.12
 - llama.cpp（CPU 版即可跑通，GPU 版可选）
 - Qwen2.5-7B-Instruct Q4_K_M GGUF 模型
 - BGE `BAAI/bge-small-zh-v1.5`（本地路径 `models/bge-small-zh-v1.5`，经 ModelScope 下载）
-- `transformers==4.46.3`、`sentence-transformers==3.2.1`、`sentencepiece`（**版本组合已锁定，升级会破坏 BGE 和 NLI 的兼容性**）
+- `transformers==4.46.3`、`sentence-transformers==3.2.1`（**版本组合已锁定，升级会破坏 BGE 和 NLI 的兼容性**）
 - NLI：`Fengshenbang/Erlangshen-RoBERTa-110M-NLI`，本地路径
   `models/Fengshenbang--Erlangshen-RoBERTa-110M-NLI/snapshots/master`
   - 标签顺序：`["contradiction", "neutral", "entailment"]`（已实测确认）
