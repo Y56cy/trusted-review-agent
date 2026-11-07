@@ -14,6 +14,16 @@ RRF_K = 60
 TOKENIZER = jieba.Tokenizer()
 
 
+class _PositiveBM25(BM25Okapi):
+    """使用正值 IDF，避免小语料及常见词的准确命中被零/负分过滤。"""
+
+    def _calc_idf(self, document_frequencies):
+        self.idf = {
+            word: math.log1p((self.corpus_size - frequency + 0.5) / (frequency + 0.5))
+            for word, frequency in document_frequencies.items()
+        }
+
+
 def _chinese_ratio(text):
     non_space = re.sub(r"\s", "", text)
     if not non_space:
@@ -85,7 +95,7 @@ class Retriever:
         tokens = [tokenize(p["text"]) for p in corpus]
         if not any(tokens):
             raise ValueError("语料不包含可索引的中文、字母或数字")
-        bm25 = BM25Okapi(tokens, k1=1.5, b=0.75)
+        bm25 = _PositiveBM25(tokens, k1=1.5, b=0.75)
         embeddings = _normalize(
             self.model.encode([p["text"] for p in corpus], normalize_embeddings=True)
         )
@@ -130,7 +140,7 @@ class Retriever:
             scores = self.bm25.get_scores(tokenize(query))
             lexical = sorted(
                 (i for i in eligible if scores[i] > 0),
-                key=lambda i: (-scores[i], -similarities[i], self.corpus[i]["para_id"]),
+                key=lambda i: (-scores[i], self.corpus[i]["para_id"]),
             )
             if method == "bm25":
                 ranked = lexical

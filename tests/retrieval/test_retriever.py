@@ -52,6 +52,27 @@ class RetrievalTests(unittest.TestCase):
         self.assertAlmostEqual(hits[0]["score"], 1)
         self.assertEqual(r.search("BM25"), r.search("BM25", method="hybrid"))
 
+    def test_small_corpus_exact_keyword_keeps_positive_score(self):
+        for corpus in (
+            [paragraph(1, "BM25 检索科研材料")],
+            [paragraph(1, "BM25 检索科研材料"), paragraph(2, "天气气温变化")],
+        ):
+            with self.subTest(size=len(corpus)):
+                r = self.make(corpus)
+                self.assertGreater(r.bm25.idf["bm25"], 0)
+                self.assertEqual([h["para_id"] for h in r.search("BM25", method="bm25")], [1])
+
+    def test_common_query_terms_are_not_discarded(self):
+        r = self.make([paragraph(i, "中文科研材料") for i in range(1, 4)])
+        self.assertEqual([h["para_id"] for h in r.search("科研", method="bm25")], [1, 2, 3])
+        self.assertEqual(r.search("absentxyz", method="bm25"), [])
+
+    def test_bm25_tiebreak_is_independent_of_vector_ranking(self):
+        corpus = [paragraph(2, "中文乙"), paragraph(1, "中文甲")]
+        r = self.make(corpus, {"中文甲": [0.2, 1.0], "中文乙": [1.0, 0.0]})
+        with patch.object(r.bm25, "get_scores", return_value=np.array([1, 1])):
+            self.assertEqual([h["para_id"] for h in r.search("查询", method="bm25")], [1, 2])
+
     def test_rrf_changes_order_keeps_vector_scores_and_deduplicates(self):
         corpus = [paragraph(i, f"中文段落内容{i}") for i in range(1, 4)]
         mapping = {
@@ -102,6 +123,15 @@ class RetrievalTests(unittest.TestCase):
         with patch.object(r.bm25, "get_scores", return_value=scores):
             self.assertEqual(len(r.search("问题", top_k=25)), 25)
             self.assertEqual(len(r.search("问题", top_k=100)), 30)
+
+    def test_rrf_excludes_candidates_outside_both_top_twenty(self):
+        corpus = [paragraph(i, f"中文材料{i}") for i in range(1, 46)]
+        mapping = {p["text"]: [46 - p["para_id"], 1.0] for p in corpus}
+        r = self.make(corpus, mapping)
+        # 两路分别为 1..20、45..26；21..25 不在任何候选通道内。
+        with patch.object(r.bm25, "get_scores", return_value=np.arange(1, 46)):
+            ids = [h["para_id"] for h in r.search("查询", top_k=3)]
+        self.assertEqual(ids, [1, 45, 2])
 
     def test_query_and_parameter_errors(self):
         r = self.make([paragraph(1, "中文材料")])
@@ -156,6 +186,37 @@ class RetrievalTests(unittest.TestCase):
             self.assertEqual(load.call_args.args[0], ROOT / "models/bge-small-zh-v1.5")
             module.Retriever(ROOT / "custom-model")
             self.assertEqual(load.call_args.args[0], ROOT / "custom-model")
+
+    def test_pipeline_consumes_search_results_without_contract_change(self):
+        import importlib.util
+        import types
+
+        # 避免导入 NLI 权重；运行原 pipeline 的实际编排代码。
+        corpus = [paragraph(1, "BM25 根据词频检索文献段落。")]
+        parser_stub = types.ModuleType("parser")
+        parser_stub.parse_pdf = lambda path: corpus
+        generator_stub = types.ModuleType("generator")
+        generator_stub.generate = lambda prompt: "BM25 根据词频检索文献。"
+        match_stub = types.ModuleType("match")
+        match_stub.split_sentences = lambda text: [text]
+        match_stub.match_sentence = lambda sentence, candidates, threshold: [
+            {k: c[k] for k in ("text", "page", "para_id")}
+            | {"nli_label": "entailment", "nli_prob": 0.9}
+            for c in candidates
+        ]
+        spec = importlib.util.spec_from_file_location("pipeline_contract", ROOT / "src/pipeline.py")
+        pipeline = importlib.util.module_from_spec(spec)
+        with (
+            patch.dict(
+                sys.modules,
+                {"parser": parser_stub, "generator": generator_stub, "match": match_stub},
+            ),
+            patch.object(module, "_load_embedding_model", return_value=FakeEncoder()),
+        ):
+            spec.loader.exec_module(pipeline)
+            result = pipeline.run_review("BM25", "not-a-real-pdf")
+        self.assertEqual(set(result), {"query", "review", "sentences"})
+        self.assertEqual(result["sentences"][0]["evidences"][0]["para_id"], 1)
 
 
 if __name__ == "__main__":

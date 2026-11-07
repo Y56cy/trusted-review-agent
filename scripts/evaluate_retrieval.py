@@ -31,6 +31,13 @@ def sha256(path):
     return digest.hexdigest()
 
 
+def model_identifier(model_path, default_path):
+    """自定义目录不伪称默认 BGE；具体文件身份由报告校验值确定。"""
+    if model_path.resolve() == default_path.resolve():
+        return "BAAI/bge-small-zh-v1.5"
+    return f"local:{model_path.name}"
+
+
 def validate_dataset(paragraphs, queries):
     """模型加载前校验；编号限定为 parser 产生的正整数。"""
     if not isinstance(paragraphs, list) or not paragraphs:
@@ -157,6 +164,8 @@ def markdown_report(report):
         f"- 模型：`{m['model_id']}`（文件校验值见同目录 JSON）",
         f"- 参数：k={m['top_k']}，中文占比={m['min_chinese_ratio']}；"
         "BM25 k1=1.5、b=0.75；RRF 常数=60、双通道权重各 0.5",
+        "- BM25 正值 IDF：ln(1 + (N - df + 0.5) / (df + 0.5))；"
+        "关键词同分按段落编号排序，不引入向量分数。",
         f"- 模型加载：{m['model_load_seconds']:.3f}s；建索引：{m['index_seconds']:.3f}s",
         "- score 始终是余弦相似度；指标按返回顺序计算。",
         "",
@@ -214,6 +223,7 @@ def main(argv=None):
     parser.add_argument("--min-chinese-ratio", type=float, default=0.3)
     parser.add_argument("--output-dir", type=Path, default=ROOT / "results/retrieval")
     parser.add_argument("--validate-only", action="store_true")
+    parser.add_argument("--split", choices=("all", "dev", "heldout"), default="all")
     args = parser.parse_args(argv)
     if args.top_k <= 0 or not 0 <= args.min_chinese_ratio <= 1:
         parser.error("top-k 必须为正数，min-chinese-ratio 必须在 0 到 1 之间")
@@ -234,6 +244,10 @@ def main(argv=None):
         query_payload = load_json(args.queries)
         queries = query_payload["queries"] if isinstance(query_payload, dict) else query_payload
         validate_dataset(paragraphs, queries)
+        if args.split != "all":
+            queries = [q for q in queries if q["split"] == args.split]
+            if not queries:
+                raise ValueError(f"查询文件不包含 {args.split} 查询")
         if args.validate_only:
             print(
                 f"校验通过：{len(paragraphs)} 段，{len(queries)} 条查询。未加载模型、未运行效果评测。"
@@ -274,7 +288,13 @@ def main(argv=None):
             else "外部语料；标签来源及独立人工复核状态需另行确认。检索指标不能证明综述事实正确。",
             "top_k": args.top_k,
             "min_chinese_ratio": args.min_chinese_ratio,
-            "bm25": {"k1": 1.5, "b": 0.75},
+            "bm25": {
+                "k1": 1.5,
+                "b": 0.75,
+                "idf": "ln(1 + (N - df + 0.5) / (df + 0.5))",
+                "tie_break": "para_id ascending",
+            },
+            "requested_split": args.split,
             "rrf": {"k": 60, "weights": [0.5, 0.5]},
             "candidate_limit": "min(eligible_count, max(20, top_k))",
             "tokenizer": "jieba default dictionary; HMM=False; lowercase; no stopwords",
@@ -283,7 +303,7 @@ def main(argv=None):
                 json.dumps(paragraphs, sort_keys=True, ensure_ascii=False).encode("utf-8")
             ).hexdigest(),
             "queries_sha256": sha256(args.queries),
-            "model_id": "BAAI/bge-small-zh-v1.5",
+            "model_id": model_identifier(model_path, DEFAULT_MODEL_PATH),
             "model_path": str(model_path),
             "model_files_sha256": model_manifest(model_path),
             "model_load_seconds": load_seconds,
@@ -291,6 +311,10 @@ def main(argv=None):
             "python": platform.python_version(),
             "platform": platform.platform(),
             "packages": packages,
+            "source_files_sha256": {
+                "src/retriever.py": sha256(ROOT / "src/retriever.py"),
+                "scripts/evaluate_retrieval.py": sha256(Path(__file__)),
+            },
         }
         report = {"metadata": metadata, "summary": summary, "details": details}
         args.output_dir.mkdir(parents=True, exist_ok=True)

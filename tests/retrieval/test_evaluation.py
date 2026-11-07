@@ -1,7 +1,9 @@
 import importlib.util
+import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
 spec = importlib.util.spec_from_file_location(
@@ -99,6 +101,110 @@ class EvaluationTests(unittest.TestCase):
             self.assertEqual(
                 evaluation.model_manifest(directory), {"model.bin": evaluation.sha256(path)}
             )
+
+    def test_custom_model_identifier_is_not_hardcoded_bge(self):
+        default = ROOT / "models/bge-small-zh-v1.5"
+        self.assertEqual(evaluation.model_identifier(default, default), "BAAI/bge-small-zh-v1.5")
+        self.assertEqual(
+            evaluation.model_identifier(ROOT / "custom-encoder", default), "local:custom-encoder"
+        )
+
+    def test_cli_writes_reports_and_can_run_dev_without_heldout(self):
+        from test_retriever import FakeEncoder
+
+        import retriever
+
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory)
+            with patch.object(retriever, "_load_embedding_model", return_value=FakeEncoder()):
+                code = evaluation.main(
+                    [
+                        "--paragraphs",
+                        str(ROOT / "data/retrieval/paragraphs.example.json"),
+                        "--queries",
+                        str(ROOT / "data/retrieval/queries.example.json"),
+                        "--output-dir",
+                        str(target),
+                        "--split",
+                        "dev",
+                    ]
+                )
+            self.assertEqual(code, 0)
+            report = json.loads((target / "report.json").read_text("utf-8"))
+            self.assertEqual(report["metadata"]["requested_split"], "dev")
+            self.assertEqual(len(report["details"]), 12)
+            self.assertTrue(all(q["split"] == "dev" for q in report["details"]))
+            self.assertEqual(report["summary"]["heldout"], {})
+            self.assertIn("source_files_sha256", report["metadata"])
+            self.assertIn(evaluation.NOTICE, (target / "report.md").read_text("utf-8"))
+
+    @unittest.skipUnless(importlib.util.find_spec("pypdf"), "PDF 输入验收需核心依赖 pypdf")
+    def test_pdf_input_uses_existing_parser_and_writes_report(self):
+        from pypdf import PdfWriter
+        from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
+        from test_retriever import FakeEncoder
+
+        import retriever
+
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory)
+            writer = PdfWriter()
+            page = writer.add_blank_page(width=600, height=800)
+            font = DictionaryObject(
+                {
+                    NameObject("/Type"): NameObject("/Font"),
+                    NameObject("/Subtype"): NameObject("/Type1"),
+                    NameObject("/BaseFont"): NameObject("/Helvetica"),
+                }
+            )
+            page[NameObject("/Resources")] = DictionaryObject(
+                {
+                    NameObject("/Font"): DictionaryObject(
+                        {NameObject("/F1"): writer._add_object(font)}
+                    )
+                }
+            )
+            stream = DecodedStreamObject()
+            stream.set_data(
+                b"BT /F1 12 Tf 40 700 Td "
+                b"(BM25 retrieves research evidence using document term frequency.) Tj ET"
+            )
+            page[NameObject("/Contents")] = writer._add_object(stream)
+            pdf = target / "fixture.pdf"
+            with pdf.open("wb") as output:
+                writer.write(output)
+            queries = target / "queries.json"
+            queries.write_text(
+                json.dumps(
+                    [
+                        {
+                            "query_id": "pdf1",
+                            "query": "BM25",
+                            "relevant_para_ids": [1],
+                            "split": "dev",
+                        }
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            with patch.object(retriever, "_load_embedding_model", return_value=FakeEncoder()):
+                code = evaluation.main(
+                    [
+                        "--pdf",
+                        str(pdf),
+                        "--queries",
+                        str(queries),
+                        "--min-chinese-ratio",
+                        "0",
+                        "--output-dir",
+                        str(target),
+                    ]
+                )
+            self.assertEqual(code, 0)
+            report = json.loads((target / "report.json").read_text("utf-8"))
+            self.assertEqual(report["metadata"]["dataset_type"], "unverified_pdf")
+            self.assertEqual(report["metadata"]["corpus_sha256"], evaluation.sha256(pdf))
+            self.assertEqual(report["summary"]["all"]["bm25"]["recall"], 1)
 
     def test_report_records_decline_and_split_metrics(self):
         details = [
