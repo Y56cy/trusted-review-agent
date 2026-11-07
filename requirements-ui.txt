@@ -1,0 +1,6 @@
+# Independent member B UI environment; does not install or upgrade model dependencies.
+gradio==5.50.0
+# Keep compatible with the project's locked transformers==4.46.3.
+huggingface-hub>=0.33.5,<1.0
+# Honor SOCKS proxy environments without breaking Gradio's HTTP client at import.
+httpx[socks]==0.28.1
