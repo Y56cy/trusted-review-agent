@@ -6,7 +6,7 @@ addopts = "-ra"
 [tool.ruff]
 target-version = "py312"
 line-length = 100
-include = ["src/app.py", "tests/unit/*.py"]
+include = ["src/app.py", "tests/unit/*.py", "tests/integration/ui_smoke.py"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I"]
