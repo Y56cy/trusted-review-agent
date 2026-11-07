@@ -7,3 +7,8 @@ data/papers/*.pdf
 results/*.json
 .env
 .claude
+.venv*/
+.pytest_cache/
+.ruff_cache/
+.gradio/
+results/ui/

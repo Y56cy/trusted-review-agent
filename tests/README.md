@@ -1,6 +1,25 @@
 # tests/
 
-开发期的 spike / 实验脚本，**不是正式测试套件**，仅供历史参考。
+本目录根部的旧脚本是开发期 spike / 实验，**不是正式测试套件**，仅供历史参考。部分脚本在导入时就访问模型或本地服务，不要对根目录做无差别测试收集。
+
+## 成员 B 正式离线测试
+
+```bash
+python -m pytest -q
+ruff check src/app.py tests/unit tests/integration/ui_smoke.py
+ruff format --check src/app.py tests/unit tests/integration/ui_smoke.py
+python tests/integration/ui_smoke.py
+```
+
+使用 `.venv-ui` 或已安装 `requirements-dev.txt` 的 Python。pytest 默认只收集 `tests/unit`。HTTP smoke 会启动临时本机 Gradio 服务，并在结束后关闭，不调用真实模型。
+
+- `unit/test_app.py`：结果校验、HTML/CSV 安全、导出、并发隔离与 pipeline 子进程适配。
+- `unit/test_app_ui.py`：Gradio 组件、离线回调、演示标记和失败清空。
+- `integration/ui_smoke.py`：真实 HTTP 请求、下载、JSON 回导、清空和重复操作。
+
+这些测试不等于 BGE/NLI/LLM 联调或正式效果评价。
+
+## 历史脚本
 
 - `test_pipeline.py` — 早期的端到端 demo（解析→检索→生成），已被 `src/pipeline.py` 取代
 - `test_nil_real.py` — NLI 可行性验证（Erlangshen 中文证据可用、跨语言不可靠）

@@ -1,0 +1,12 @@
+[tool.pytest.ini_options]
+testpaths = ["tests/unit"]
+pythonpath = ["src"]
+addopts = "-ra"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+include = ["src/app.py", "tests/unit/*.py", "tests/integration/ui_smoke.py"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]

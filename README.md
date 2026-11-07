@@ -60,6 +60,21 @@ pip install -r requirements.txt
 2. 运行端到端原型（中期检查 demo）：
    python src/pipeline.py
 
+### 成员 B 界面（可离线验收）
+
+```bash
+python3.12 -m venv .venv-ui
+source .venv-ui/bin/activate
+python -m pip install --index-url https://pypi.org/simple -r requirements-dev.txt
+python src/app.py
+```
+
+打开 `http://127.0.0.1:7860`。无需模型即可加载明确标记的演示样例，或导入已有 pipeline JSON，查看逐句证据并下载 Markdown / CSV / JSON / HTML 报告。
+
+真实 PDF 生成需要原有本地模型环境，可通过 `--backend-python /绝对路径/核心环境/bin/python` 选择。界面环境不替代模型环境；缺少模型、PDF 或 llama-server 时会明确报错，不生成假结果。
+
+详见 [成员 B 开发与使用说明](docs/成员B开发说明.md) 和 [成员 B 验收记录](docs/成员B验收记录.md)。
+
 
 ## 当前进度
 
@@ -72,9 +87,9 @@ pip install -r requirements.txt
 - [x] **PDF 解析合并逻辑修复**（句子不再被切成碎片，段落语义完整）
 - [x] 句级证据匹配接入 pipeline（端到端原型跑通）
 - [ ] 人工标注集
-- [ ] 溯源展示
+- [x] 溯源展示 + 报告导出（离线与 HTTP 验收通过，真实模型联调待做）
 - [ ] BM25 混合检索
-- [ ] Gradio 界面
+- [x] Gradio 界面（本地运行；浏览器视觉验收与截图待补）
 - [ ] 评价指标
 
 ## 已知问题
