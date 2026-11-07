@@ -7,3 +7,12 @@ numpy==2.5.3
 scikit-learn==1.9.1
 requests==2.34.2
 modelscope==1.40.1
+
+# fsspec 锁定：datasets 要求 <=2026.6.0，装 gradio 会误拉到 2026.9.0 导致冲突（见 README「已知问题」）
+fsspec[http]>=2023.5.0,<=2026.6.0
+
+# 检索依赖（组员A）：jieba + rank-bm25
+-r requirements-retrieval.txt
+
+# 界面依赖（组员B）：gradio
+-r requirements-ui.txt
