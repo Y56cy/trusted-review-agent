@@ -1,0 +1,117 @@
+{
+  "dataset_type": "synthetic_example",
+  "annotation_status": "预先编写的示例标签，尚未独立人工复核；未使用检索输出反推标签。",
+  "queries": [
+    {
+      "query_id": "dev01",
+      "query": "BM25 怎样减少长段落天然占优势的问题？",
+      "relevant_para_ids": [
+        1
+      ],
+      "split": "dev",
+      "category": "关键词"
+    },
+    {
+      "query_id": "dev02",
+      "query": "向量与关键词两个召回通道如何合并排名？",
+      "relevant_para_ids": [
+        3
+      ],
+      "split": "dev",
+      "category": "融合"
+    },
+    {
+      "query_id": "dev03",
+      "query": "怎样把外部文献交给模型作为回答依据？",
+      "relevant_para_ids": [
+        4
+      ],
+      "split": "dev",
+      "category": "语义改写"
+    },
+    {
+      "query_id": "dev04",
+      "query": "前几个结果有没有漏掉应该找出的资料，用哪个指标衡量？",
+      "relevant_para_ids": [
+        10
+      ],
+      "split": "dev",
+      "category": "语义改写"
+    },
+    {
+      "query_id": "hold01",
+      "query": "BGE 为什么能找出措辞不同但意思相近的资料？",
+      "relevant_para_ids": [
+        2
+      ],
+      "split": "heldout",
+      "category": "语义"
+    },
+    {
+      "query_id": "hold02",
+      "query": "综述里的话应该怎样找到原文，资料不够时怎么处理？",
+      "relevant_para_ids": [
+        5,
+        6
+      ],
+      "split": "heldout",
+      "category": "多相关段落"
+    },
+    {
+      "query_id": "hold03",
+      "query": "文本型 PDF 提取后需要保留哪些来源字段？",
+      "relevant_para_ids": [
+        7
+      ],
+      "split": "heldout",
+      "category": "术语"
+    },
+    {
+      "query_id": "hold04",
+      "query": "当前原型能直接读取扫描件吗，需要 OCR 吗？",
+      "relevant_para_ids": [
+        8
+      ],
+      "split": "heldout",
+      "category": "英文术语"
+    },
+    {
+      "query_id": "hold05",
+      "query": "Precision@k 和 MRR@k 分别衡量什么？",
+      "relevant_para_ids": [
+        9,
+        11
+      ],
+      "split": "heldout",
+      "category": "多相关段落"
+    },
+    {
+      "query_id": "hold06",
+      "query": "为什么不应根据保留集的分数反复改参数？",
+      "relevant_para_ids": [
+        12
+      ],
+      "split": "heldout",
+      "category": "泄漏"
+    },
+    {
+      "query_id": "hold07",
+      "query": "Qwen2.5-7B、llama.cpp 和 Q4_K_M 有什么关系？",
+      "relevant_para_ids": [
+        14
+      ],
+      "split": "heldout",
+      "category": "型号数字"
+    },
+    {
+      "query_id": "hold08",
+      "query": "NLI 判定蕴含能证明事实正确吗，与核查借阅证有什么不同？",
+      "relevant_para_ids": [
+        5,
+        15
+      ],
+      "split": "heldout",
+      "category": "词面干扰"
+    }
+  ]
+}

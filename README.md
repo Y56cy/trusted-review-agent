@@ -24,7 +24,7 @@
 ├── requirements.txt     # 依赖清单
 ├── src/                 # 核心代码
 │   ├── parser.py        # 文献解析：PDF → 段落（带页码/para_id）
-│   ├── retriever.py     # 证据检索：BGE 向量 + 中文过滤
+│   ├── retriever.py     # 证据检索：BGE + BM25 / RRF + 中文过滤
 │   ├── generator.py     # 综述生成：本地量化大模型
 │   ├── match.py         # 句级证据匹配：拆句 + NLI 精筛
 │   └── pipeline.py      # 端到端入口（中期检查原型）
@@ -48,7 +48,9 @@
   - 标签顺序：`["contradiction", "neutral", "entailment"]`（已实测确认）
   - 加载方式：`BertTokenizer` + `BertForSequenceClassification`（**不要用 `AutoTokenizer`**，会触发 DacConfig 的 KeyError）
 ## 安装
-pip install -r requirements.txt
+pip install -r requirements.txt -r requirements-retrieval.txt
+
+成员 A 的检索模式、独立测试、示例对照与真实论文补验步骤见 [成员 A 检索开发说明](docs/成员A检索开发说明.md) 和 [成员 A 验收记录](docs/成员A验收记录.md)。示例评测不代表真实论文表现。
 
 ## 模型下载
 - BGE 向量模型：通过 ModelScope 下载 `BAAI/bge-small-zh-v1.5` 到 `models/bge-small-zh-v1.5`

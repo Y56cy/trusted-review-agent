@@ -12,3 +12,5 @@ results/*.json
 .ruff_cache/
 .gradio/
 results/ui/
+
+results/retrieval*/
