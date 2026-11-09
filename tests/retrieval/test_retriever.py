@@ -48,7 +48,7 @@ class RetrievalTests(unittest.TestCase):
         r = self.make(corpus)
         hits = r.search("BM25", method="bm25")
         self.assertEqual([h["para_id"] for h in hits], [1])
-        self.assertEqual(set(hits[0]), {"text", "page", "para_id", "score"})
+        self.assertEqual(set(hits[0]), {"text", "page", "para_id", "source", "score"})
         self.assertAlmostEqual(hits[0]["score"], 1)
         self.assertEqual(r.search("BM25"), r.search("BM25", method="hybrid"))
 
@@ -169,6 +169,22 @@ class RetrievalTests(unittest.TestCase):
         r.build_index([paragraph(2, "新的科研材料")])
         self.assertEqual([h["para_id"] for h in r.search("科研")], [2])
         self.assertEqual(len(r.tokens), 1)
+
+    def test_multi_source_paragraphs_are_distinct(self):
+        # 多篇文献：同 para_id 但不同 source 不算重复
+        corpus = [
+            {"para_id": 1, "page": 1, "text": "甲文档段落内容", "source": "doc_a"},
+            {"para_id": 1, "page": 1, "text": "乙文档段落内容", "source": "doc_b"},
+        ]
+        r = self.make(corpus)
+        self.assertEqual(len(r.corpus), 2)
+        self.assertEqual({h["source"] for h in r.search("段落")}, {"doc_a", "doc_b"})
+        # 同一 source 下 para_id 重复仍报错
+        with self.assertRaises(ValueError):
+            self.make([
+                {"para_id": 1, "page": 1, "text": "甲", "source": "doc_a"},
+                {"para_id": 1, "page": 1, "text": "乙", "source": "doc_a"},
+            ])
 
     def test_input_snapshot(self):
         corpus = [paragraph(1, "原始中文材料")]

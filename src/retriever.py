@@ -75,7 +75,11 @@ class Retriever:
         self.chinese_ratios = []
 
     def build_index(self, paragraphs):
-        """原子替换双索引。输入采用 parser 的 text / page / para_id 格式。"""
+        """原子替换双索引。输入采用 parser 的 text / page / para_id / source 格式。
+
+        段落唯一标识 = (source, para_id)，多篇文献靠 source 区分；不带 source 的
+        旧调用 source 取空串，保持向后兼容。
+        """
         corpus = []
         ids = set()
         for p in paragraphs:
@@ -86,10 +90,17 @@ class Retriever:
             for key in ("page", "para_id"):
                 if type(p.get(key)) is not int or p[key] <= 0:
                     raise ValueError(f"{key} 必须是正整数")
-            if p["para_id"] in ids:
-                raise ValueError(f"para_id 重复：{p['para_id']}")
-            ids.add(p["para_id"])
-            corpus.append({k: p[k] for k in ("text", "page", "para_id")})
+            source = p.get("source") or ""
+            key = (source, p["para_id"])
+            if key in ids:
+                raise ValueError(f"段落标识重复：(source={source!r}, para_id={p['para_id']})")
+            ids.add(key)
+            corpus.append({
+                "text": p["text"],
+                "page": p["page"],
+                "para_id": p["para_id"],
+                "source": source,
+            })
         if not corpus:
             raise ValueError("无有效语料，无法建立索引")
         tokens = [tokenize(p["text"]) for p in corpus]
@@ -106,7 +117,8 @@ class Retriever:
         self.chinese_ratios = [_chinese_ratio(p["text"]) for p in corpus]
 
     def search(self, query, top_k=3, min_chinese_ratio=0.3, *, method="hybrid"):
-        """返回原有四字段。混合顺序由 RRF 决定，不可按 score 再排序。
+        """返回 text / page / para_id / source / score 五字段。混合顺序由 RRF 决定，
+        不可按 score 再排序。
 
         score 在所有模式中均为 BGE 余弦相似度。BM25 仅返回正分命中；
         hybrid 无关键词命中时退回 vector。过滤先于各通道截取候选。

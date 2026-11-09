@@ -76,6 +76,7 @@ def match_sentence(sentence: str, candidates: list[dict], threshold: float = 0.7
             matches.append({
                 "para_id": c["para_id"],
                 "page": c["page"],
+                "source": c.get("source", ""),
                 "text": c["text"],
                 "nli_label": label,
                 "nli_prob": prob,

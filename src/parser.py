@@ -1,4 +1,6 @@
 import re
+from pathlib import Path
+
 from pypdf import PdfReader
 
 
@@ -96,9 +98,11 @@ def clean_text(text):
 def parse_pdf(pdf_path, min_length=30):
     """
     解析 PDF，返回段落列表。
-    每个段落是一个字典：{"text": ..., "page": ..., "para_id": ...}
+    每个段落是一个字典：{"text": ..., "page": ..., "para_id": ..., "source": ...}
+    source 取文件名（不含扩展名），para_id 保持「篇内从 1 开始」，多篇靠 source 区分。
     """
     reader = PdfReader(pdf_path)
+    source = Path(pdf_path).stem
     all_paragraphs = []
     para_counter = 0
 
@@ -111,7 +115,8 @@ def parse_pdf(pdf_path, min_length=30):
             all_paragraphs.append({
                 "text": p,
                 "page": page_num,
-                "para_id": para_counter
+                "para_id": para_counter,
+                "source": source,
             })
 
     return all_paragraphs
