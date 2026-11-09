@@ -30,7 +30,8 @@
 │   └── pipeline.py      # 端到端入口（中期检查原型）
 ├── tests/               # 开发期 spike / 实验脚本（历史参考）
 ├── docs/                # 团队文档：执行方案 / 分工 / 冲刺计划
-├── data/papers/         # 测试用 PDF 文献
+├── data/papers/         # 单篇测试用 PDF 文献
+├── data/corpus/         # 多篇文献库（本次冲刺新建，RAG 主题 5 篇）
 ├── models/              # 下载的 BGE 等模型权重
 ├── results/             # 实验记录、输出结果
 └── README.md
@@ -48,7 +49,8 @@
   - 标签顺序：`["contradiction", "neutral", "entailment"]`（已实测确认）
   - 加载方式：`BertTokenizer` + `BertForSequenceClassification`（**不要用 `AutoTokenizer`**，会触发 DacConfig 的 KeyError）
 ## 安装
-pip install -r requirements.txt -r requirements-retrieval.txt
+pip install -r requirements.txt
+# 该文件已用 -r 引用 requirements-retrieval.txt 和 requirements-ui.txt，一条命令装齐全部依赖。
 
 成员 A 的检索模式、独立测试、示例对照与真实论文补验步骤见 [成员 A 检索开发说明](docs/成员A检索开发说明.md) 和 [成员 A 验收记录](docs/成员A验收记录.md)。示例评测不代表真实论文表现。
 
@@ -83,16 +85,15 @@ python src/app.py
 - [x] 本地大模型推理跑通（llama.cpp + Qwen2.5-7B）
 - [x] BGE 向量检索跑通
 - [x] PDF 解析 + 清洗（108 段，带页码和 para_id）
-- [x] 模块化拆分（parser / retriever / generator / test_pipeline）
+- [x] 模块化拆分（parser / retriever / generator / match）
 - [x] NLI 环境跑通（Erlangshen-110M，标签顺序确认）
-- [x] NLI 真实场景测试（3 对，中文证据可用、跨语言证据不可靠）
-- [x] **PDF 解析合并逻辑修复**（句子不再被切成碎片，段落语义完整）
 - [x] 句级证据匹配接入 pipeline（端到端原型跑通）
-- [ ] 人工标注集
-- [x] 溯源展示 + 报告导出（离线与 HTTP 验收通过，真实模型联调待做）
-- [ ] BM25 混合检索
-- [x] Gradio 界面（本地运行；浏览器视觉验收与截图待补）
-- [ ] 评价指标
+- [x] BM25 / BGE RRF 混合检索 + 检索评测工具（组员 A）
+- [x] Gradio 界面（单篇，组员 B）
+- [ ] **多篇文献库**（加 `source` 字段，本次冲刺 D1–D2）
+- [ ] 左右对照 UI（本次冲刺 D3）
+- [ ] 真实文献评测 + 人工标注（本次冲刺 D4–D5）
+- [ ] 评价指标（公式待定，结题做）
 
 ## 已知问题
 
@@ -109,4 +110,7 @@ python src/app.py
 5. llama.cpp 暂用 CPU 版，GPU 版暂缓
 6. git 提交不 `git add .`，不提交模型和虚拟环境
 7. `transformers==4.46.3` 版本锁定，不升级
+8. 文献库方向：大模型/RAG 主题，中期演示 5 篇 PDF；文献名用文件名
+9. 溯源展示先做「点句 → 右侧显示证据原文 + 文献名/页码」，PDF 原页坐标高亮是结题迭代项
+10. 多篇段落唯一标识 = (source, para_id)；para_id 篇内从 1 开始
 
