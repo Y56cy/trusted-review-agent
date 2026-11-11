@@ -53,6 +53,9 @@ def main() -> None:
                 assert len(result[3]) == 4
                 for filename in result[3]:
                     assert Path(filename).is_file() and Path(filename).stat().st_size > 0
+                diagnostics = client.predict(api_name="/check_environment")
+                assert "检查的 Python：" in diagnostics
+                assert "不加载模型" in diagnostics and "仍须使用真实 PDF" in diagnostics
                 envelope = json.loads(Path(result[3][2]).read_text("utf-8"))
                 assert envelope["metadata"]["is_demo"] is True
                 imported = client.predict(handle_file(result[3][2]), api_name="/import_result")
@@ -69,7 +72,10 @@ def main() -> None:
                 repeated = client.predict(api_name="/show_demo")
                 assert repeated[1] == result[1]
                 assert Path(repeated[3][2]) != Path(result[3][2])
-                print("PASS: 本地 HTTP 服务、四种下载、JSON 回导、清空、失败状态、重复操作。")
+                print(
+                    "PASS: 本地 HTTP 服务、后端环境自检、四种下载、JSON 回导、"
+                    "清空、失败状态、重复操作。"
+                )
                 print("仅使用手工演示数据；未验证浏览器视觉效果、真实模型或正式评测。")
             finally:
                 server.terminate()

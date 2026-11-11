@@ -10,6 +10,7 @@ import argparse
 import ast
 import csv
 import html
+import importlib.metadata
 import importlib.util
 import json
 import math
@@ -29,6 +30,21 @@ MAX_JSON_BYTES = 5 * 1024 * 1024
 MAX_PDF_BYTES = 50 * 1024 * 1024
 NOTICE = "句级匹配仅提供证据支持与人工核查依据，不证明事实正确；NLI 概率不是事实准确率。"
 DEMO_NOTICE = "演示数据：手工构造的界面样例，不是论文、真实生成结果或评测结果。"
+CHECK_NOTICE = (
+    "基础自检不加载模型、不下载文件、不运行生成或正式评测；"
+    "即使通过，仍须使用真实 PDF 验证模型加载与完整生成。"
+)
+CORE_DEPENDENCIES = (
+    ("pypdf", "pypdf", None),
+    ("torch", "torch", None),
+    ("transformers", "transformers", "4.46.3"),
+    ("sentence_transformers", "sentence-transformers", "3.2.1"),
+    ("sklearn", "scikit-learn", None),
+    ("requests", "requests", None),
+    ("numpy", "numpy", None),
+    ("jieba", "jieba", None),
+    ("rank_bm25", "rank-bm25", None),
+)
 CSS = """
 .review-trace {line-height: 1.7; overflow-wrap: anywhere;}
 .review-trace .trace-sentence, .review-trace .trace-evidence {
@@ -321,9 +337,22 @@ def export_report(
 def environment_issues() -> list[str]:
     """Inspect prerequisites without importing heavy model modules or downloading data."""
     issues = []
-    for name in ("pypdf", "torch", "transformers", "sentence_transformers", "sklearn", "requests"):
+    if sys.version_info[:2] != (3, 12):
+        issues.append("项目要求 Python 3.12；请使用兼容的核心 Python 环境。")
+    for name, distribution, required_version in CORE_DEPENDENCIES:
         if importlib.util.find_spec(name) is None:
             issues.append(f"核心环境缺少 {name}；请使用已配置模型依赖的 Python。")
+        elif required_version:
+            try:
+                installed = importlib.metadata.version(distribution)
+            except importlib.metadata.PackageNotFoundError:
+                issues.append(f"无法确认 {distribution} 版本；项目锁定 {required_version}。")
+            else:
+                if installed != required_version:
+                    issues.append(
+                        f"{distribution} 版本为 {installed}；项目锁定 {required_version}，"
+                        "请使用兼容的核心环境，不要自动升级模型依赖。"
+                    )
     if not (ROOT / "models" / "bge-small-zh-v1.5").is_dir():
         issues.append("缺少 models/bge-small-zh-v1.5 本地 BGE 权重。")
     try:
@@ -336,7 +365,7 @@ def environment_issues() -> list[str]:
                 isinstance(target, ast.Name) and target.id == "_NLI_PATH" for target in node.targets
             )
         )
-        if not isinstance(nli_path, str) or not Path(nli_path).is_dir():
+        if not isinstance(nli_path, str) or not (SRC / nli_path).is_dir():
             issues.append("match.py 的 _NLI_PATH 不存在；请队长配置本地 NLI 权重路径。")
     except (OSError, SyntaxError, ValueError, StopIteration):
         issues.append("无法确认 match.py 的 NLI 路径，请由核心链路维护人检查。")
@@ -346,6 +375,91 @@ def environment_issues() -> list[str]:
     except OSError:
         issues.append("127.0.0.1:8080 不可连接；请启动本地 llama-server。")
     return issues
+
+
+def _offline_environment() -> dict:
+    return {
+        **os.environ,
+        "HF_HUB_OFFLINE": "1",
+        "TRANSFORMERS_OFFLINE": "1",
+        "TOKENIZERS_PARALLELISM": "false",
+        "PYTHONUTF8": "1",
+    }
+
+
+def environment_report() -> dict:
+    """Describe the current interpreter, never a different configured backend."""
+    return {
+        "schema_version": 1,
+        "python_executable": sys.executable,
+        "python_version": sys.version.split()[0],
+        "issues": environment_issues(),
+        "notice": CHECK_NOTICE,
+    }
+
+
+def check_backend_environment(backend_python=None, *, timeout=15) -> dict:
+    """Probe the same Python and cwd used by generation, without importing model code."""
+    try:
+        completed = subprocess.run(
+            [
+                backend_python or sys.executable,
+                str(Path(__file__).resolve()),
+                "--check",
+                "--json",
+            ],
+            cwd=SRC,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=timeout,
+            check=False,
+            env=_offline_environment(),
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise ValueError(f"环境自检超过 {timeout} 秒，已停止；请检查核心 Python。") from exc
+    except OSError as exc:
+        raise ValueError("无法启动核心 Python；请检查 --backend-python 路径。") from exc
+    try:
+        report = json.loads(completed.stdout, parse_constant=_reject_constant)
+        if (
+            not isinstance(report, dict)
+            or type(report.get("schema_version")) is not int
+            or report["schema_version"] != 1
+            or not isinstance(report.get("issues"), list)
+            or not all(isinstance(issue, str) for issue in report["issues"])
+            or not isinstance(report.get("python_executable"), str)
+            or not report["python_executable"]
+            or not isinstance(report.get("python_version"), str)
+            or not report["python_version"]
+            or completed.returncode != int(bool(report["issues"]))
+        ):
+            raise ValueError("自检响应格式或退出码无效。")
+    except (ValueError, RecursionError) as exc:
+        reason = completed.stderr.strip()[-1000:] or "核心进程没有返回有效的自检报告。"
+        raise ValueError(f"环境自检未完成：{reason}") from exc
+    report["notice"] = CHECK_NOTICE
+    return report
+
+
+def format_environment_report(report: dict) -> str:
+    status = "基础前置检查通过。" if not report["issues"] else "基础前置检查未通过："
+    lines = [
+        f"检查的 Python：{report['python_executable']}",
+        f"Python 版本：{report['python_version']}",
+        status,
+        *(f"- {issue}" for issue in report["issues"]),
+        CHECK_NOTICE,
+    ]
+    return "\n".join(lines)
+
+
+def check_environment(backend_python=None) -> str:
+    try:
+        return format_environment_report(check_backend_environment(backend_python))
+    except ValueError as exc:
+        return f"未完成：{exc}\n{CHECK_NOTICE}"
 
 
 def _validate_request(query, pdf_path, top_k, nli_threshold) -> tuple[str, Path]:
@@ -419,13 +533,7 @@ def run_pipeline(
                 errors="replace",
                 timeout=timeout,
                 check=False,
-                env={
-                    **os.environ,
-                    "HF_HUB_OFFLINE": "1",
-                    "TRANSFORMERS_OFFLINE": "1",
-                    "TOKENIZERS_PARALLELISM": "false",
-                    "PYTHONUTF8": "1",
-                },
+                env=_offline_environment(),
             )
         except subprocess.TimeoutExpired as exc:
             raise ValueError(
@@ -527,6 +635,11 @@ def build_app(backend_python=None):
                         "需要已配置的本地 BGE / NLI / llama-server。"
                         "缺少模型时使用下方离线导入或演示；不会自动下载模型。"
                     )
+                    with gr.Accordion("真实生成环境自检（不运行模型）", open=False):
+                        check_button = gr.Button("检查核心 Python 与本地模型前置条件")
+                        diagnostics = gr.Textbox(
+                            label="自检结果（不代表真实联调通过）", interactive=False, lines=8
+                        )
                 with gr.Tab("导入已有结果"):
                     imported = gr.File(
                         label="pipeline 结果 JSON（最大 5 MiB）", file_types=[".json"]
@@ -557,6 +670,13 @@ def build_app(backend_python=None):
         clear_button.click(
             lambda: ("已清空结果。", "", "", None), api_name="clear_result", **shared
         )
+        check_button.click(
+            lambda: check_environment(backend_python),
+            outputs=[diagnostics],
+            api_name="check_environment",
+            concurrency_id="review-actions",
+            concurrency_limit=1,
+        )
     return demo.queue(max_size=8, default_concurrency_limit=1)
 
 
@@ -564,19 +684,35 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--port", type=int, default=7860)
     parser.add_argument("--backend-python", help="已有核心模型虚拟环境的 Python 路径")
-    parser.add_argument("--check", action="store_true", help="只检查当前 Python 的真实生成前置条件")
+    parser.add_argument("--check", action="store_true", help="只检查所选核心 Python 的生成前置条件")
+    parser.add_argument("--json", action="store_true", help="与 --check 一起输出机器可读自检报告")
     parser.add_argument(
         "--pipeline-job", nargs=2, metavar=("REQUEST", "RESULT"), help=argparse.SUPPRESS
     )
     args = parser.parse_args()
+    if args.json and not args.check:
+        parser.error("--json 仅可与 --check 一起使用。")
     if args.pipeline_job:
         return _pipeline_worker(*args.pipeline_job)
     if args.check:
-        issues = environment_issues()
+        try:
+            report = (
+                check_backend_environment(args.backend_python)
+                if args.backend_python
+                else environment_report()
+            )
+        except ValueError as exc:
+            if args.json:
+                print(json.dumps({"error": str(exc), "notice": CHECK_NOTICE}, ensure_ascii=False))
+            else:
+                print(f"未完成：{exc}\n{CHECK_NOTICE}")
+            return 2
         print(
-            "\n".join(issues) if issues else "基础前置检查通过；仍需用真实 PDF 验收模型加载与生成。"
+            json.dumps(report, ensure_ascii=False, indent=2)
+            if args.json
+            else format_environment_report(report)
         )
-        return int(bool(issues))
+        return int(bool(report["issues"]))
     build_app(args.backend_python).launch(
         server_name="127.0.0.1",
         server_port=args.port,

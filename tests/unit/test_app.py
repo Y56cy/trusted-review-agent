@@ -361,3 +361,22 @@ def test_exported_html_anchor_targets_are_unique_and_highlightable(result, tmp_p
     assert set(anchors.links) == set(anchors.targets)
     assert ".trace-evidence:target" in content
     assert "https://" not in content and "<script" not in content
+
+
+def test_ui_and_exports_preserve_pipeline_evidence_order(result, tmp_path):
+    # A's hybrid ranking is encoded by list order, not the retained BGE score.
+    original = result["sentences"][0]["evidences"][0]
+    first = {**original, "para_id": 8, "text": "RRF 第一条", "score": 0.1}
+    second = {**original, "para_id": 2, "text": "RRF 第二条", "score": 0.9}
+    result["sentences"][0]["evidences"] = [first, second]
+    rendered = app.render_provenance(result)
+    assert rendered.index("RRF 第一条") < rendered.index("RRF 第二条")
+    paths = app.export_report(result, tmp_path)
+    for index in (0, 3):
+        content = Path(paths[index]).read_text("utf-8")
+        assert content.index("RRF 第一条") < content.index("RRF 第二条")
+    with Path(paths[1]).open(encoding="utf-8-sig", newline="") as stream:
+        rows = list(csv.reader(stream))
+    assert [row[3] for row in rows[1:3]] == ["8", "2"]
+    imported, _ = app.load_result(paths[2])
+    assert [e["para_id"] for e in imported["sentences"][0]["evidences"]] == [8, 2]

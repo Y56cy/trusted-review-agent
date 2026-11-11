@@ -82,5 +82,16 @@ def test_build_blocks_wires_callbacks_and_serializes_actions(monkeypatch):
             assert len(functions[name].outputs) == 4
         assert functions["clear_result"].fn()[1:] == ("", "", None)
         assert "手工构造" in functions["show_demo"].fn()[0]
+        diagnostics = functions["check_environment"]
+        assert diagnostics.concurrency_id == "review-actions"
+        assert diagnostics.concurrency_limit == 1
+        assert len(diagnostics.outputs) == 1
+        assert diagnostics.outputs[0] not in functions["show_demo"].outputs
+        selected = []
+        monkeypatch.setattr(
+            app, "check_environment", lambda python: selected.append(python) or "自检结果"
+        )
+        assert diagnostics.fn() == "自检结果"
+        assert selected == ["chosen"]
     finally:
         demo.close()
