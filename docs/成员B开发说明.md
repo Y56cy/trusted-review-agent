@@ -28,7 +28,7 @@ python -m pip check
 
 选择 Gradio 5.50.0，并限制 `huggingface-hub<1.0`，避免与锁定的 `transformers==4.46.3` 冲突。Gradio 6.31.0 需要 `huggingface-hub>=1.16.0`，不直接混入现有模型环境。界面默认仅监听本机，不启用公共分享链接。
 
-原有 `requirements.txt` 保持不变，包括其 UTF-16LE 编码和模型版本。安装该文件失败时请由核心链路维护人确认编码及版本，不在 B 的变更中擅自升级或替换。
+截至主分支 `6f6723e`，`requirements.txt` 已由维护人统一为 UTF-8，并包含检索/UI 依赖及 fsspec 上限。本轮 B 的开发不修改该文件或模型版本；UI 独立环境仍只安装 `requirements-dev.txt`，不会自动安装模型依赖。
 
 ## 暂缓事项
 
@@ -45,6 +45,8 @@ python -m pip check
 - 每次运行生成独立 Markdown、CSV、JSON、HTML 文件。Markdown/HTML 包含综述与证据对照表，CSV 便于逐行人工核查，JSON 便于交接后续跑分。导出只保存现有结果，不创造证据、标注或评价分数。
 - HTML 转义、CSV 公式中和、严格数据校验、文件大小限制、每次导出独立目录、错误后清空旧结果。
 - 本地 pipeline 在独立子进程运行，工作目录固定为 `src`，默认 600 秒超时；禁止 Hugging Face 隐式联网下载模型。界面和既有核心环境可以使用不同的 Python。
+- 真实生成面板新增环境自检，检查与生成相同的核心 Python；显示所检查的解释器、缺失依赖、锁定版本差异、本地模型目录与 llama-server 端口。自检不运行模型，也不覆盖当前综述和下载文件。
+- 展示、导出和 JSON 回导保留 pipeline 返回的证据顺序，不按 BGE `score` 或段号重排。混合检索的排名由成员 A 返回的列表次序表达。
 
 ## 启动与使用
 
@@ -68,13 +70,24 @@ python src/app.py --backend-python 'D:\dachuang\trusted-review-agent\venv\Script
 2. **已有结果展示**：在“导入已有结果”中上传 JSON，然后点击“导入并展示”。原始格式必须包含 `query`、`review`、`sentences`；证据字段沿用《分工文档》。`page` 和 `para_id` 必须为正整数，概率须为 0–1 的有限数值。本界面导出的 `schema_version=1` envelope 也可回导。
 3. **真实生成**：在核心环境和 llama-server 已准备好后上传文本型 PDF、输入问题、点击生成。界面没有后台假数据回退，前置条件缺失会显示明确错误。
 
-在**核心环境的 Python**中先做基本自检：
+可直接在界面的“真实生成环境自检”中点击检查，或在命令行指定**核心环境的 Python**：
 
 ```bash
+# 从 UI 环境检查另一套核心环境（与启动 UI 的 --backend-python 相同）：
+python src/app.py --check --backend-python /absolute/path/to/core-venv/bin/python
+
+# 不指定 --backend-python 时检查当前执行它的 Python：
 /path/to/core-venv/bin/python src/app.py --check
+
+# 保存机器可读的阻塞清单，便于交接；报告不是评测结果：
+python src/app.py --check --backend-python /absolute/path/to/core-venv/bin/python --json
 ```
 
-自检不加载模型，只检查依赖是否存在、本地权重目录和 llama-server 端口。即使通过也不代表模型可加载或生成正确，仍须真实 PDF 联调。`--check` 只检查执行它的当前 Python，不自动切换 `--backend-python`。
+自检不加载模型，只检查 Python 3.12、核心与混合检索依赖是否存在、`transformers==4.46.3` / `sentence-transformers==3.2.1` 两个锁定版本、本地权重目录和 llama-server 端口。包括新增的 `numpy`、`jieba`、`rank_bm25`，但不检查每个传递依赖是否能导入，也不校验权重完整性或服务响应内容。
+
+`--check --backend-python` 现在会实际运行所指定的 Python，工作目录和离线环境变量与生成任务相同。子进程自检最多等待 15 秒；不会下载或安装缺失依赖。命令退出码：`0` 为基础检查通过，`1` 为存在缺项，`2` 为自检未能完成或命令用法错误。`--json` 仅与 `--check` 一起使用，自检启动失败时输出 `error`，而非伪造成功报告。
+
+**即使自检通过也不代表模型可加载或生成正确，仍须真实 PDF 联调。** UI 自检单独显示，不替换之前的综述或下载；旧报告仍属于原运行。自检和生成共用串行队列，正在生成时需要等待，不是中断按钮。
 
 ## 下载与运行限制
 

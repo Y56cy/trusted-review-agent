@@ -77,6 +77,8 @@ python src/app.py
 
 真实 PDF 生成需要原有本地模型环境，可通过 `--backend-python /绝对路径/核心环境/bin/python` 选择。界面环境不替代模型环境；缺少模型、PDF 或 llama-server 时会明确报错，不生成假结果。
 
+生成前可点击界面的“真实生成环境自检”，或运行 `python src/app.py --check --backend-python /绝对路径/核心环境/bin/python`。加 `--json` 可输出交接用自检报告；自检不加载模型，通过也不代表真实联调已完成。
+
 详见 [成员 B 开发与使用说明](docs/成员B开发说明.md) 和 [成员 B 验收记录](docs/成员B验收记录.md)。
 
 

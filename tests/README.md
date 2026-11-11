@@ -15,7 +15,8 @@ python tests/integration/ui_smoke.py
 
 - `unit/test_app.py`：结果校验、HTML/CSV 安全、导出、并发隔离与 pipeline 子进程适配。
 - `unit/test_app_ui.py`：Gradio 组件、离线回调、演示标记和失败清空。
-- `integration/ui_smoke.py`：真实 HTTP 请求、下载、JSON 回导、清空和重复操作。
+- `unit/test_app_environment.py`：所选核心 Python 自检、混合检索依赖、锁定版本、CLI JSON / 退出码、失败及超时。
+- `integration/ui_smoke.py`：真实 HTTP 请求、后端自检、下载、JSON 回导、清空和重复操作。
 
 这些测试不等于 BGE/NLI/LLM 联调或正式效果评价。
 
