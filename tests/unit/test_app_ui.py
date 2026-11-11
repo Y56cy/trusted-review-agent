@@ -1,6 +1,7 @@
 """Offline UI construction and callback tests; no models or server required."""
 
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -23,7 +24,7 @@ def test_demo_callback_is_explicitly_synthetic():
     assert app.DEMO_NOTICE in status
     assert "不是正式评测" in status
     assert review == app.DEMO_RESULT["review"]
-    assert 'id="ev-1-1"' in rendered
+    assert re.search(r'id="run-[0-9a-f]+-ev-1-1"', rendered)
     assert all(Path(path).is_file() for path in paths)
     assert json.loads(Path(paths[2]).read_text("utf-8"))["metadata"]["is_demo"] is True
 
@@ -80,6 +81,7 @@ def test_build_blocks_wires_callbacks_and_serializes_actions(monkeypatch):
             assert functions[name].concurrency_id == "review-actions"
             assert functions[name].concurrency_limit == 1
             assert len(functions[name].outputs) == 4
+        assert functions["generate_review"].inputs[1].file_count == "multiple"
         assert functions["clear_result"].fn()[1:] == ("", "", None)
         assert "手工构造" in functions["show_demo"].fn()[0]
         diagnostics = functions["check_environment"]
@@ -95,3 +97,13 @@ def test_build_blocks_wires_callbacks_and_serializes_actions(monkeypatch):
         assert selected == ["chosen"]
     finally:
         demo.close()
+
+
+def test_reloading_result_does_not_reuse_previous_selection_anchor():
+    first = app.show_demo()[2]
+    second = app.show_demo()[2]
+    first_ids = set(re.findall(r'id="([^"]+)"', first))
+    second_ids = set(re.findall(r'id="([^"]+)"', second))
+    assert first_ids and second_ids and first_ids.isdisjoint(second_ids)
+    assert set(re.findall(r'href="#([^"]+)"', first)) <= first_ids
+    assert set(re.findall(r'href="#([^"]+)"', second)) <= second_ids

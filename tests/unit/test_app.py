@@ -140,9 +140,9 @@ def test_exports_preserve_data_and_warn_without_fake_metrics(result, tmp_path):
         assert "未进行正式评测" in content
     with paths["evidence.csv"].open(encoding="utf-8-sig", newline="") as stream:
         rows = list(csv.reader(stream))
-    assert len(rows) == 3
+    assert len(rows) == 4
     assert rows[1][4] == result["sentences"][0]["evidences"][0]["text"]
-    assert "未匹配到证据" in rows[2][4]
+    assert "未匹配到证据" in rows[-1][4]
 
 
 @pytest.mark.parametrize(
@@ -254,7 +254,12 @@ def test_pipeline_adapter_sets_offline_flags_cwd_and_timeout(result, pdf, monkey
         assert kwargs["env"]["TRANSFORMERS_OFFLINE"] == "1"
         assert command[0] == "/chosen/python"
         request = json.loads(Path(command[-2]).read_text("utf-8"))
-        assert request == {"query": "问题", "pdf_path": str(pdf), "top_k": 4, "nli_threshold": 0.8}
+        assert request == {
+            "query": "问题",
+            "pdf_paths": [str(pdf)],
+            "top_k": 4,
+            "nli_threshold": 0.8,
+        }
         Path(command[-1]).write_text(json.dumps(result), "utf-8")
         return SimpleNamespace(returncode=0, stderr="")
 
@@ -357,7 +362,9 @@ def test_exported_html_anchor_targets_are_unique_and_highlightable(result, tmp_p
     content = Path(paths[3]).read_text("utf-8")
     anchors = Anchors()
     anchors.feed(content)
-    assert len(anchors.targets) == len(set(anchors.targets)) == 4
+    assert len(anchors.targets) == len(set(anchors.targets))
+    assert len([target for target in anchors.targets if target.startswith("ev-")]) == 6
+    assert set(anchors.links) <= set(anchors.targets)
     assert set(anchors.links) == set(anchors.targets)
     assert ".trace-evidence:target" in content
     assert "https://" not in content and "<script" not in content
@@ -380,3 +387,9 @@ def test_ui_and_exports_preserve_pipeline_evidence_order(result, tmp_path):
     assert [row[3] for row in rows[1:3]] == ["8", "2"]
     imported, _ = app.load_result(paths[2])
     assert [e["para_id"] for e in imported["sentences"][0]["evidences"]] == [8, 2]
+
+
+@pytest.mark.parametrize("prefix", ["<script>", '" onclick="bad', "../", None])
+def test_provenance_rejects_unsafe_anchor_prefix(result, prefix):
+    with pytest.raises(ValueError, match="锚点"):
+        app.render_provenance(result, anchor_prefix=prefix)

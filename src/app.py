@@ -16,11 +16,13 @@ import json
 import math
 import os
 import re
+import secrets
 import socket
 import subprocess
 import sys
 import tempfile
 import threading
+import unicodedata
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -28,6 +30,9 @@ ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
 MAX_JSON_BYTES = 5 * 1024 * 1024
 MAX_PDF_BYTES = 50 * 1024 * 1024
+MAX_PDF_FILES = 10
+MAX_TOTAL_PDF_BYTES = 200 * 1024 * 1024
+UNKNOWN_SOURCE = "文献来源未知"
 NOTICE = "句级匹配仅提供证据支持与人工核查依据，不证明事实正确；NLI 概率不是事实准确率。"
 DEMO_NOTICE = "演示数据：手工构造的界面样例，不是论文、真实生成结果或评测结果。"
 CHECK_NOTICE = (
@@ -59,6 +64,26 @@ CSS = """
 .review-trace .trace-text {white-space: pre-wrap;}
 .review-trace a {color: #1d4ed8; text-decoration: underline;}
 .review-trace .trace-meta {font-size: 0.9em;}
+.review-trace .trace-columns {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px;
+}
+.review-trace .trace-review, .review-trace .trace-sources {
+  min-width: 0; max-height: 70vh; overflow-y: auto; padding: 4px;
+}
+.review-trace .trace-sentence-link {display: block; padding: 6px 0;}
+.review-trace a:focus-visible {outline: 3px solid #b77900; outline-offset: 3px;}
+.review-trace .trace-evidence-group:target {scroll-margin-top: 16px;}
+.review-trace:has(.trace-evidence-group:target, .trace-evidence:target)
+  .trace-evidence-group:not(:target):not(:has(.trace-evidence:target)) {display: none;}
+@media (max-width: 760px) {
+  .review-trace .trace-columns {grid-template-columns: minmax(0, 1fr);}
+  .review-trace .trace-review, .review-trace .trace-sources {max-height: none;}
+}
+@media print {
+  .review-trace .trace-columns {display: block;}
+  .review-trace .trace-review, .review-trace .trace-sources {max-height: none; overflow: visible;}
+  .review-trace .trace-evidence-group {display: block !important;}
+}
 """
 DEMO_RESULT = {
     "query": "【演示】如何查看逐句证据？",
@@ -70,10 +95,19 @@ DEMO_RESULT = {
                 {
                     "page": 1,
                     "para_id": 1,
+                    "source": "演示文献甲（手工构造）",
                     "text": "【手工构造的演示原文】点击证据标记后，这个原文片段会被定位并高亮。",
                     "nli_label": "entailment",
                     "nli_prob": 0.85,
-                }
+                },
+                {
+                    "page": 2,
+                    "para_id": 1,
+                    "source": "演示文献乙（手工构造）",
+                    "text": "【第二篇手工构造原文】段号同为 1，但文献名不同，不能合并为同一证据。",
+                    "nli_label": "entailment",
+                    "nli_prob": 0.78,
+                },
             ],
         },
         {"sentence": "另一句示例暂时没有匹配证据。", "evidences": []},
@@ -126,6 +160,7 @@ def validate_result(value) -> dict:
                 raise ValueError(f"{field} nli_prob 必须是 0 到 1 之间的有限数值。")
             checked.append(
                 {
+                    "source": _text(evidence.get("source", ""), f"{field} source"),
                     "page": evidence["page"],
                     "para_id": evidence["para_id"],
                     "text": _text(evidence.get("text"), f"{field} text"),
@@ -172,37 +207,68 @@ def load_result(path: str | Path) -> tuple[dict, dict]:
     return validate_result(data), metadata
 
 
-def render_provenance(result: dict) -> str:
-    """Link each sentence to the returned original text; no PDF coordinates assumed."""
+def _source_label(evidence: dict) -> str:
+    return evidence["source"] if evidence["source"].strip() else UNKNOWN_SOURCE
+
+
+def render_provenance(result: dict, *, anchor_prefix: str = "") -> str:
+    """Select a sentence on the left to filter evidence on the right, without scripts.
+
+    Fixed numeric anchors are independent of source names and paragraph IDs.
+    Browsers without :has() still show every evidence with working anchor links.
+    """
     result = validate_result(result)
+    if not isinstance(anchor_prefix, str) or not re.fullmatch(r"[A-Za-z0-9_-]*", anchor_prefix):
+        raise ValueError("证据锚点前缀无效。")
     escape = html.escape
     parts = ['<section class="review-trace" aria-label="逐句证据溯源">']
     if not result["sentences"]:
         parts.append('<p class="trace-warning">没有逐句结果，无法展示证据，请人工核查。</p>')
+    parts.extend(
+        [
+            f'<p id="{anchor_prefix}trace-all">点击左侧句子，在右侧查看对应证据。'
+            f'<a href="#{anchor_prefix}trace-all">查看全部证据</a>；'
+            "旧版缺少文献名时显示“文献来源未知”。</p>",
+            '<div class="trace-columns"><div class="trace-review" aria-label="综述逐句选择">',
+            "<h3>综述 · 选择一句</h3>",
+        ]
+    )
     for i, item in enumerate(result["sentences"], 1):
         parts.append(f'<article class="trace-sentence"><strong>句 {i}</strong>')
-        parts.append(f'<p class="trace-text">{escape(item["sentence"])}</p>')
+        parts.append(
+            f'<a class="trace-sentence-link trace-text" href="#{anchor_prefix}sentence-{i}">'
+            f"{escape(item['sentence'])}</a>"
+        )
         for j, evidence in enumerate(item["evidences"], 1):
             parts.append(
-                f'<a href="#ev-{i}-{j}">[证据{j}: 第{evidence["page"]}页 '
-                f"第{evidence['para_id']}段]</a> "
+                f'<a href="#{anchor_prefix}ev-{i}-{j}">[证据{j}: '
+                f"{escape(_source_label(evidence))} · "
+                f"第{evidence['page']}页 第{evidence['para_id']}段]</a> "
             )
         if not item["evidences"]:
             parts.append('<p class="trace-warning">未匹配到证据，需人工核查。</p>')
         parts.append("</article>")
-    if any(item["evidences"] for item in result["sentences"]):
-        parts.append("<h3>原文片段（点击上方证据标记定位并高亮）</h3>")
+    parts.append(
+        '</div><div class="trace-sources" aria-label="对应原文证据"><h3>原文证据 · 文献与位置</h3>'
+    )
     for i, item in enumerate(result["sentences"], 1):
+        parts.append(
+            f'<section id="{anchor_prefix}sentence-{i}" class="trace-evidence-group" tabindex="0">'
+            f"<h4>句 {i} 对应的原文片段</h4>"
+        )
+        if not item["evidences"]:
+            parts.append('<p class="trace-warning">未匹配到证据，需人工核查。</p>')
         for j, evidence in enumerate(item["evidences"], 1):
             parts.append(
-                f'<article id="ev-{i}-{j}" class="trace-evidence" tabindex="0">'
-                f"<strong>句 {i} · 证据 {j} · 第{evidence['page']}页 "
-                f"第{evidence['para_id']}段</strong>"
+                f'<article id="{anchor_prefix}ev-{i}-{j}" class="trace-evidence" tabindex="0">'
+                f"<strong>句 {i} · 证据 {j} · 文献：{escape(_source_label(evidence))} · "
+                f"第{evidence['page']}页 第{evidence['para_id']}段</strong>"
                 f'<p class="trace-meta">NLI 标签：{escape(evidence["nli_label"])}；'
                 f"模型概率：{evidence['nli_prob']:.3f}</p>"
                 f'<p class="trace-text">{escape(evidence["text"])}</p></article>'
             )
-    parts.append("</section>")
+        parts.append("</section>")
+    parts.append("</div></div></section>")
     return "\n".join(parts)
 
 
@@ -265,8 +331,8 @@ def export_report(
         "",
         "## 逐句证据对照",
         "",
-        "| 句号 | 生成句 | 页码 / 段号 | 原文 | NLI 标签 / 模型概率 |",
-        "| --- | --- | --- | --- | --- |",
+        "| 句号 | 生成句 | 文献名 | 页码 / 段号 | 原文 | NLI 标签 / 模型概率 |",
+        "| --- | --- | --- | --- | --- | --- |",
     ]
     csv_file = folder / "evidence.csv"
     with csv_file.open("w", encoding="utf-8-sig", newline="") as stream:
@@ -282,6 +348,7 @@ def export_report(
                 "模型概率",
                 "来源",
                 "说明",
+                "文献名",
             ]
         )
         for i, item in enumerate(result["sentences"], 1):
@@ -290,7 +357,7 @@ def export_report(
                 if evidence is None:
                     cells = [i, item["sentence"], "", "", "未匹配到证据，需人工核查", "", ""]
                     row = (
-                        f"| {i} | {_markdown(item['sentence'])} | — | "
+                        f"| {i} | {_markdown(item['sentence'])} | — | — | "
                         "未匹配到证据，需人工核查 | — |"
                     )
                 else:
@@ -305,11 +372,22 @@ def export_report(
                     ]
                     row = (
                         f"| {i} | {_markdown(item['sentence'])} | "
+                        f"{_markdown(_source_label(evidence))} | "
                         f"{evidence['page']} / {evidence['para_id']} | "
                         f"{_markdown(evidence['text'])} | {evidence['nli_label']} / "
                         f"{evidence['nli_prob']:.3f} |"
                     )
-                writer.writerow([_csv_cell(str(cell)) for cell in [*cells, source_name, warning]])
+                writer.writerow(
+                    [
+                        _csv_cell(str(cell))
+                        for cell in [
+                            *cells,
+                            source_name,
+                            warning,
+                            _source_label(evidence) if evidence else "",
+                        ]
+                    ]
+                )
                 md.append(row)
     if not result["sentences"]:
         md.append("\n没有逐句结果，无法展示证据，请人工核查。")
@@ -462,22 +540,48 @@ def check_environment(backend_python=None) -> str:
         return f"未完成：{exc}\n{CHECK_NOTICE}"
 
 
-def _validate_request(query, pdf_path, top_k, nli_threshold) -> tuple[str, Path]:
+def _normalize_pdf_paths(pdf_paths) -> list:
+    if isinstance(pdf_paths, (str, Path)):
+        return [pdf_paths] if pdf_paths else []
+    if pdf_paths is None:
+        return []
+    if not isinstance(pdf_paths, (list, tuple)):
+        raise ValueError("请选择一个或多个 PDF 文件。")
+    return list(pdf_paths)
+
+
+def _validate_request(query, pdf_paths, top_k, nli_threshold) -> tuple[str, list[Path]]:
     query = _text(query, "问题").strip()
     if not query:
         raise ValueError("请输入问题。")
     if len(query) > 4000:
         raise ValueError("问题不能超过 4000 个字符。")
-    if not pdf_path:
+    paths = _normalize_pdf_paths(pdf_paths)
+    if not paths:
         raise ValueError("请先上传文本型 PDF。")
-    pdf = Path(pdf_path).resolve()
-    if not pdf.is_file() or pdf.suffix.lower() != ".pdf":
-        raise ValueError("请选择有效的 PDF 文件。")
-    if pdf.stat().st_size > MAX_PDF_BYTES:
-        raise ValueError("PDF 不能超过 50 MiB。")
-    with pdf.open("rb") as stream:
-        if b"%PDF-" not in stream.read(1024):
-            raise ValueError("文件没有有效的 PDF 标识；不支持扫描件 OCR。")
+    if len(paths) > MAX_PDF_FILES:
+        raise ValueError(f"一次最多上传 {MAX_PDF_FILES} 篇 PDF。")
+    pdfs, sources, total_size = [], set(), 0
+    for path in paths:
+        if not isinstance(path, (str, Path)) or not path:
+            raise ValueError("请选择有效的 PDF 文件路径。")
+        pdf = Path(path).resolve()
+        if not pdf.is_file() or pdf.suffix.lower() != ".pdf":
+            raise ValueError("请选择有效的 PDF 文件。")
+        stem = unicodedata.normalize("NFC", pdf.stem).casefold()
+        if not stem.strip() or stem in sources:
+            raise ValueError("PDF 文献名（不含扩展名）不能为空或重复；请重命名后重新上传。")
+        sources.add(stem)
+        size = pdf.stat().st_size
+        if size > MAX_PDF_BYTES:
+            raise ValueError("每篇 PDF 不能超过 50 MiB。")
+        total_size += size
+        if total_size > MAX_TOTAL_PDF_BYTES:
+            raise ValueError("PDF 总大小不能超过 200 MiB。")
+        with pdf.open("rb") as stream:
+            if b"%PDF-" not in stream.read(1024):
+                raise ValueError("文件没有有效的 PDF 标识；不支持扫描件 OCR。")
+        pdfs.append(pdf)
     if type(top_k) not in (int, float) or not 1 <= top_k <= 20 or not float(top_k).is_integer():
         raise ValueError("top_k 必须是 1 到 20 的整数。")
     if (
@@ -486,12 +590,12 @@ def _validate_request(query, pdf_path, top_k, nli_threshold) -> tuple[str, Path]
         or not math.isfinite(nli_threshold)
     ):
         raise ValueError("NLI 阈值必须在 0 到 1 之间。")
-    return query, pdf
+    return query, pdfs
 
 
 def run_pipeline(
     query,
-    pdf_path,
+    pdf_paths,
     top_k=3,
     nli_threshold=0.7,
     *,
@@ -499,7 +603,7 @@ def run_pipeline(
     backend_python=None,
 ) -> dict:
     """Run the owner's unchanged pipeline from src, with a deadline and offline models."""
-    query, pdf = _validate_request(query, pdf_path, top_k, nli_threshold)
+    query, pdfs = _validate_request(query, pdf_paths, top_k, nli_threshold)
     with tempfile.TemporaryDirectory(prefix="trusted-review-job-") as directory:
         request_file, result_file = (
             Path(directory) / "request.json",
@@ -509,7 +613,7 @@ def run_pipeline(
             json.dumps(
                 {
                     "query": query,
-                    "pdf_path": str(pdf),
+                    "pdf_paths": [str(pdf) for pdf in pdfs],
                     "top_k": int(top_k),
                     "nli_threshold": nli_threshold,
                 },
@@ -578,7 +682,8 @@ def _display(result: dict, source_name: str, is_demo: bool = False) -> tuple:
     if is_demo:
         status = DEMO_NOTICE + "\n" + status
     files = export_report(result, source_name=source_name, is_demo=is_demo)
-    return status, result["review"], render_provenance(result), files
+    rendered = render_provenance(result, anchor_prefix=f"run-{secrets.token_hex(8)}-")
+    return status, result["review"], rendered, files
 
 
 def _failed(exc: Exception) -> tuple:
@@ -600,11 +705,12 @@ def show_demo():
     return _display(DEMO_RESULT, "内置手工演示样例", is_demo=True)
 
 
-def generate_review(query, pdf_path, top_k, nli_threshold, *, backend_python=None):
+def generate_review(query, pdf_paths, top_k, nli_threshold, *, backend_python=None):
     yield "正在运行本地 pipeline，最长等待 10 分钟……", "", "", None
     try:
-        result = run_pipeline(query, pdf_path, top_k, nli_threshold, backend_python=backend_python)
-        yield _display(result, f"本地生成 · {Path(pdf_path).name}")
+        result = run_pipeline(query, pdf_paths, top_k, nli_threshold, backend_python=backend_python)
+        names = [Path(path).name for path in _normalize_pdf_paths(pdf_paths)]
+        yield _display(result, f"本地生成 · {len(names)} 篇 PDF：" + "、".join(names))
     except (ValueError, OSError) as exc:
         yield _failed(exc)
 
@@ -623,9 +729,16 @@ def build_app(backend_python=None):
         with gr.Row():
             with gr.Column(scale=1):
                 with gr.Tab("从文本型 PDF 生成"):
-                    pdf = gr.File(label="文本型 PDF（单篇，最大 50 MiB）", file_types=[".pdf"])
+                    pdf = gr.File(
+                        label="文本型 PDF 文献库（1–10 篇，每篇 ≤50 MiB，总计 ≤200 MiB）",
+                        file_types=[".pdf"],
+                        file_count="multiple",
+                    )
+                    gr.Markdown("中期演示建议 3–5 篇。文件名（不含扩展名）必须互不重复。")
                     query = gr.Textbox(
-                        label="研究问题", lines=3, placeholder="这篇论文提出了什么方法？"
+                        label="研究问题",
+                        lines=3,
+                        placeholder="这些论文采用了哪些方法，有什么共同点与差异？",
                     )
                     with gr.Accordion("检索与匹配参数", open=False):
                         top_k = gr.Slider(1, 20, value=3, step=1, label="每句候选证据数量 top_k")

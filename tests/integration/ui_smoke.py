@@ -7,6 +7,7 @@ This explicitly synthetic smoke test is not a real model or evaluation run.
 from __future__ import annotations
 
 import json
+import re
 import socket
 import subprocess
 import sys
@@ -51,6 +52,8 @@ def main() -> None:
                 result = client.predict(api_name="/show_demo")
                 assert "手工构造" in result[0]
                 assert len(result[3]) == 4
+                assert 'class="trace-columns"' in result[2]
+                assert re.search(r'href="#run-[0-9a-f]+-sentence-2"', result[2])
                 for filename in result[3]:
                     assert Path(filename).is_file() and Path(filename).stat().st_size > 0
                 diagnostics = client.predict(api_name="/check_environment")
@@ -58,9 +61,25 @@ def main() -> None:
                 assert "不加载模型" in diagnostics and "仍须使用真实 PDF" in diagnostics
                 envelope = json.loads(Path(result[3][2]).read_text("utf-8"))
                 assert envelope["metadata"]["is_demo"] is True
+                sources = [e["source"] for e in envelope["result"]["sentences"][0]["evidences"]]
+                assert len(set(sources)) == 2
+                assert all(
+                    source in imported_html
+                    for source in sources
+                    for imported_html in [result[2], Path(result[3][3]).read_text("utf-8")]
+                )
                 imported = client.predict(handle_file(result[3][2]), api_name="/import_result")
                 assert "来源未核验" in imported[0] and "手工构造" in imported[0]
                 assert imported[1] == result[1]
+                assert all(source in imported[2] for source in sources)
+                legacy = envelope["result"]
+                for sentence in legacy["sentences"]:
+                    for evidence in sentence["evidences"]:
+                        evidence.pop("source")
+                legacy_path = Path(directory) / "legacy.json"
+                legacy_path.write_text(json.dumps(legacy), "utf-8")
+                legacy_import = client.predict(handle_file(legacy_path), api_name="/import_result")
+                assert "文献来源未知" in legacy_import[2]
                 cleared = client.predict(api_name="/clear_result")
                 assert cleared[1:] == ("", "", None)
                 failed = client.predict("", None, 3, 0.7, api_name="/generate_review")
@@ -69,12 +88,28 @@ def main() -> None:
                 bad.write_text("{", "utf-8")
                 failed = client.predict(handle_file(bad), api_name="/import_result")
                 assert "不是有效" in failed[0] and failed[1:] == ("", "", None)
+                pdfs = []
+                for i in range(5):
+                    pdf = Path(directory) / f"synthetic-{i}.pdf"
+                    pdf.write_bytes(b"%PDF-1.7\nsynthetic upload validation only")
+                    pdfs.append(handle_file(pdf))
+                duplicate = client.predict(
+                    "重复来源检查", [pdfs[0], pdfs[0]], 3, 0.7, api_name="/generate_review"
+                )
+                assert "重复" in duplicate[0] and duplicate[1:] == ("", "", None)
+                # Valid list reaches the selected backend, which must honestly fail
+                # without models. These minimal headers are not real PDF/model data.
+                uploaded = client.predict("多篇上传检查", pdfs, 3, 0.7, api_name="/generate_review")
+                assert "生成未完成" in uploaded[0] and uploaded[1:] == ("", "", None)
                 repeated = client.predict(api_name="/show_demo")
                 assert repeated[1] == result[1]
+                old_ids = set(re.findall(r'id="([^"]+)"', result[2]))
+                new_ids = set(re.findall(r'id="([^"]+)"', repeated[2]))
+                assert old_ids and new_ids and old_ids.isdisjoint(new_ids)
                 assert Path(repeated[3][2]) != Path(result[3][2])
                 print(
                     "PASS: 本地 HTTP 服务、后端环境自检、四种下载、JSON 回导、"
-                    "清空、失败状态、重复操作。"
+                    "多来源/旧格式回导、五文件上传、同名拦截、清空、失败状态、重复操作。"
                 )
                 print("仅使用手工演示数据；未验证浏览器视觉效果、真实模型或正式评测。")
             finally:
