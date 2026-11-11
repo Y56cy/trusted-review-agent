@@ -276,7 +276,8 @@ def markdown_report(report):
     for row in review.get("queries", []):
         lines.append(
             f"- {markdown_text(row['query_id'])}: {markdown_text(str(row['annotation_status']))}；"
-            f"标注者 {markdown_text(str(row['annotator']))}；复核者 {markdown_text(str(row['reviewer']))}；"
+            f"标注者 {markdown_text(str(row['annotator']))}；"
+            f"复核者 {markdown_text(str(row['reviewer']))}；"
             f"说明 {markdown_text(str(row['review_notes']))}"
         )
     return "\n".join(lines) + "\n"
@@ -329,7 +330,8 @@ def main(argv=None):
         )
         if args.validate_only:
             print(
-                f"校验通过：{len(paragraphs)} 段，{len(queries)} 条查询。未加载模型、未运行效果评测。"
+                f"校验通过：{len(paragraphs)} 段，{len(queries)} 条查询。"
+                "未加载模型、未运行效果评测。"
             )
             return 0
         from retriever import DEFAULT_MODEL_PATH, Retriever

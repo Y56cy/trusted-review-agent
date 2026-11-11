@@ -11,8 +11,9 @@ from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
-import evaluate_retrieval as ev
-import retrieval_data as data
+
+import evaluate_retrieval as ev  # noqa: E402
+import retrieval_data as data  # noqa: E402
 
 
 class MultiSourceTests(unittest.TestCase):
@@ -244,7 +245,8 @@ class MultiSourceTests(unittest.TestCase):
             )
             stream = DecodedStreamObject()
             stream.set_data(
-                b"BT /F1 12 Tf 40 700 Td (BM25 research evidence retrieval uses term frequency.) Tj ET"
+                b"BT /F1 12 Tf 40 700 Td (BM25 research evidence retrieval uses term "
+                b"frequency.) Tj ET"
             )
             page[NameObject("/Contents")] = writer._add_object(stream)
             with path.open("wb") as output:

@@ -299,5 +299,8 @@ def annotation_review(payload, queries, corpus_checksum):
         "corpus_bound": bool(expected),
         "queries": reviews,
         "counts": dict(Counter(r["annotation_status"] or "unspecified" for r in reviews)),
-        "notice": "复核信息由标注者声明，程序不代替人工复核；未绑定语料或复核信息不全仅为初步评测。",
+        "notice": (
+            "复核信息由标注者声明，程序不代替人工复核；"
+            "未绑定语料或复核信息不全仅为初步评测。"
+        ),
     }
