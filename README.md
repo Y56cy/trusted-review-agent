@@ -73,9 +73,9 @@ python -m pip install --index-url https://pypi.org/simple -r requirements-dev.tx
 python src/app.py
 ```
 
-打开 `http://127.0.0.1:7860`。无需模型即可加载明确标记的演示样例，或导入已有 pipeline JSON，查看逐句证据并下载 Markdown / CSV / JSON / HTML 报告。
+打开 `http://127.0.0.1:7860`。无需模型即可加载明确标记的演示样例，或导入已有 pipeline JSON，左右对照查看逐句证据并下载 Markdown / CSV / JSON / HTML 报告。支持一次上传 1–10 篇文本型 PDF，文献名贯穿展示与导出；旧结果缺少文献名时明确标记未知。
 
-真实 PDF 生成需要原有本地模型环境，可通过 `--backend-python /绝对路径/核心环境/bin/python` 选择。界面环境不替代模型环境；缺少模型、PDF 或 llama-server 时会明确报错，不生成假结果。
+真实多篇 PDF 生成需要原有本地模型环境，可通过 `--backend-python /绝对路径/核心环境/bin/python` 选择。界面环境不替代模型环境；缺少模型、PDF 或 llama-server 时会明确报错，不生成假结果。
 
 生成前可点击界面的“真实生成环境自检”，或运行 `python src/app.py --check --backend-python /绝对路径/核心环境/bin/python`。加 `--json` 可输出交接用自检报告；自检不加载模型，通过也不代表真实联调已完成。
 
