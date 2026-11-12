@@ -72,6 +72,7 @@ CSS = """
   min-width: 0; max-height: 70vh; overflow-y: auto; padding: 4px;
 }
 .review-trace .trace-sentence-link {display: block; padding: 6px 0;}
+.review-trace .trace-citation {display: block; padding: 4px 0; overflow-wrap: anywhere;}
 .review-trace a:focus-visible {outline: 3px solid #b77900; outline-offset: 3px;}
 .review-trace .trace-evidence-group:target {scroll-margin-top: 16px;}
 .review-trace:has(.trace-evidence-group:target, .trace-evidence:target)
@@ -350,7 +351,7 @@ def render_provenance(result: dict, *, anchor_prefix: str = "") -> str:
         )
         for j, evidence in enumerate(item["evidences"], 1):
             parts.append(
-                f'<a href="#{anchor_prefix}ev-{i}-{j}">[证据{j}: '
+                f'<a class="trace-citation" href="#{anchor_prefix}ev-{i}-{j}">[证据{j}: '
                 f"{escape(_source_label(evidence))} · "
                 f"第{evidence['page']}页 第{evidence['para_id']}段]</a> "
             )

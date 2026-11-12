@@ -393,3 +393,9 @@ def test_ui_and_exports_preserve_pipeline_evidence_order(result, tmp_path):
 def test_provenance_rejects_unsafe_anchor_prefix(result, prefix):
     with pytest.raises(ValueError, match="锚点"):
         app.render_provenance(result, anchor_prefix=prefix)
+
+
+def test_evidence_links_have_independent_click_targets(result):
+    rendered = app.render_provenance(result)
+    assert rendered.count('class="trace-citation"') == 2
+    assert ".trace-citation {display: block;" in app.CSS
