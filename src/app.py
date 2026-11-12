@@ -87,6 +87,68 @@ CSS = """
   .review-trace .trace-evidence-group {display: block !important;}
 }
 """
+# App shell styles stay out of standalone report exports.
+UI_CSS = """
+.gradio-container {max-width: 1440px !important; margin: auto !important;
+  font-family: Inter, "Noto Sans SC", "Microsoft YaHei", sans-serif !important;}
+body {background: #f3f6f8 !important;}
+#app-header {border: 0; padding: 0; background: transparent;}
+.workspace-header {display: flex; align-items: center; justify-content: space-between;
+  gap: 24px; padding: 30px 34px; background: #142e3c; color: #fff;
+  border-radius: 20px; margin-bottom: 6px;}
+.workspace-header .eyebrow {font-size: 11px; letter-spacing: .22em; color: #a8d9d5;}
+.workspace-header h1 {font-size: 29px; line-height: 1.5; margin: 8px 0 5px; color: #fff;}
+.workspace-header p {margin: 0; color: #c5d5dd; font-size: 14px;}
+.local-badge {border: 1px solid #42606b; padding: 8px 13px; border-radius: 30px;
+  font-size: 12px; white-space: nowrap; color: #d0eae6;}
+#boundary {padding: 10px 16px; border-radius: 10px; background: #e8f1f2;}
+#boundary p {font-size: 12px; color: #395964; margin: 0;}
+#input-panel, #output-panel {background: white; border: 1px solid #dde6eb;
+  border-radius: 18px; padding: 20px; box-shadow: 0 4px 18px #15334706;}
+#input-panel {gap: 14px;}
+.panel-title {margin-bottom: 2px;}
+.panel-title .step {font-size: 11px; letter-spacing: .12em; color: #087f7c; font-weight: 700;}
+.panel-title h2 {font-size: 20px; color: #183644; margin: 5px 0;}
+.panel-title p {font-size: 12px; color: #627985; margin: 0;}
+#input-panel .tab-nav {gap: 0; flex-wrap: wrap;}
+#input-panel .tab-nav button {font-size: 12px; padding: 9px 10px;}
+#run-status textarea {background: #f0f7f6; color: #275953; font-size: 12px;}
+#review-full textarea {line-height: 1.9; font-size: 14px;}
+#input-panel button, #output-panel button {border-radius: 10px;}
+#demo-action {background: #edf6f5; color: #176b66; border: 1px solid #c5dedb;}
+#clear-action {background: white; color: #657986; border: 1px solid #dce5e9;}
+#output-panel .review-trace {font-size: 13px;}
+#output-panel .review-trace h3 {font-size: 15px; color: #213f4d;}
+#output-panel .trace-sentence {background: #f8fafb; border-color: #dce7eb;}
+#output-panel .trace-evidence {border-left: 3px solid #57a6a0; background: #f5faf9;}
+#output-panel .trace-sentence-link {text-decoration: none; color: #263e4a;
+  font-size: 14px; line-height: 1.9;}
+#output-panel .trace-citation {font-size: 12px; color: #0b716f;
+  border-radius: 6px; padding: 6px 8px; background: #e8f2f1; margin-top: 6px;
+  text-decoration: none;}
+#output-panel .trace-citation:hover {background: #d6eae7;}
+#output-panel .trace-meta {color: #627984; font-size: 11px;}
+#output-panel .trace-warning {font-size: 12px; color: #9b5a13;}
+.empty-workspace {text-align: center; padding: 40px 24px; background: #f8fafb;
+  border: 1px dashed #cbdce2; border-radius: 14px; color: #627985;}
+.empty-workspace .empty-symbol {font-size: 26px; color: #168782; margin-bottom: 12px;}
+.empty-workspace h3 {font-size: 17px; color: #284451; margin: 8px 0;}
+.empty-workspace p {font-size: 13px; line-height: 1.9; margin: 0;}
+#method-note p, #model-note p, #upload-note p {font-size: 12px; color: #637580; line-height: 1.7;}
+#workspace-footer {text-align: center; padding: 12px; color: #72838d; font-size: 11px;}
+@media (max-width: 760px) {
+  .workspace-header {padding: 22px; align-items: flex-start; flex-direction: column; gap: 16px;}
+  .workspace-header h1 {font-size: 24px;}
+  #workspace-row {flex-direction: column !important;}
+  #input-panel, #output-panel {padding: 14px; min-width: 0 !important; width: 100%;}
+}
+"""
+EMPTY_WORKSPACE = (
+    '<div class="empty-workspace"><div class="empty-symbol" aria-hidden="true">◎</div>'
+    "<h3>让每一句综述，都有据可查</h3>"
+    "<p>上传文献并提出问题，或导入已有结果。<br>"
+    "也可以点击「加载演示样例」，先体验逐句证据溯源。</p></div>"
+)
 DEMO_RESULT = {
     "query": "【演示】如何查看逐句证据？",
     "review": "这是一句用于展示溯源交互的示例。另一句示例暂时没有匹配证据。",
@@ -830,21 +892,43 @@ def build_app(backend_python=None):
 
     with gr.Blocks(
         title="可信可溯源科研综述辅助系统",
-        css=CSS,
+        css=CSS + UI_CSS,
+        theme=gr.themes.Soft(primary_hue="teal", secondary_hue="slate", neutral_hue="slate").set(
+            block_label_background_fill="transparent",
+            block_label_background_fill_dark="transparent",
+            block_label_text_color="#465e6b",
+            block_label_text_color_dark="#465e6b",
+            block_label_text_size="12px",
+            block_label_text_weight="500",
+            input_shadow="none",
+            button_primary_background_fill="#087f7c",
+            button_primary_background_fill_hover="#086a68",
+        ),
         analytics_enabled=False,
         delete_cache=(3600, 86400),
     ) as demo:
-        gr.Markdown("# 科研综述 · 逐句溯源\n本地生成、查看证据、人工核查、导出报告。")
-        gr.Markdown(f"**使用边界：{NOTICE}**")
-        with gr.Row():
-            with gr.Column(scale=1):
-                with gr.Tab("从文本型 PDF 生成"):
+        gr.HTML(
+            '<header class="workspace-header"><div><div class="eyebrow">TRUSTED REVIEW</div>'
+            "<h1>科研综述 · 逐句溯源</h1><p>从文献到综述，让证据始终在场。</p></div>"
+            '<span class="local-badge">本地工作空间 · 人工核查辅助</span></header>',
+            elem_id="app-header",
+        )
+        gr.Markdown(f"使用边界：{NOTICE}", elem_id="boundary")
+        with gr.Row(elem_id="workspace-row"):
+            with gr.Column(scale=4, min_width=340, elem_id="input-panel"):
+                gr.HTML(
+                    '<div class="panel-title"><span class="step">01 / MATERIALS</span>'
+                    "<h2>准备研究资料</h2><p>选择文献生成，或接续已有研究结果。</p></div>"
+                )
+                with gr.Tab("文献生成", elem_id="source-tabs"):
                     pdf = gr.File(
                         label="文本型 PDF 文献库（1–10 篇，每篇 ≤50 MiB，总计 ≤200 MiB）",
                         file_types=[".pdf"],
                         file_count="multiple",
                     )
-                    gr.Markdown("中期演示建议 3–5 篇。文件名（不含扩展名）必须互不重复。")
+                    gr.Markdown(
+                        "建议 3–5 篇，文件名（不含扩展名）须互不重复。", elem_id="upload-note"
+                    )
                     query = gr.Textbox(
                         label="研究问题",
                         lines=3,
@@ -856,19 +940,20 @@ def build_app(backend_python=None):
                     submit = gr.Button("生成综述并匹配证据", variant="primary")
                     gr.Markdown(
                         "需要已配置的本地 BGE / NLI / llama-server。"
-                        "缺少模型时使用下方离线导入或演示；不会自动下载模型。"
+                        "缺少模型时使用下方离线导入或演示；不会自动下载模型。",
+                        elem_id="model-note",
                     )
                     with gr.Accordion("真实生成环境自检（不运行模型）", open=False):
                         check_button = gr.Button("检查核心 Python 与本地模型前置条件")
                         diagnostics = gr.Textbox(
                             label="自检结果（不代表真实联调通过）", interactive=False, lines=8
                         )
-                with gr.Tab("导入已有结果"):
+                with gr.Tab("结果导入"):
                     imported = gr.File(
                         label="pipeline 结果 JSON（最大 5 MiB）", file_types=[".json"]
                     )
                     import_button = gr.Button("导入并展示")
-                with gr.Tab("联调语料核对"):
+                with gr.Tab("语料核对"):
                     gr.Markdown(
                         "分别上传成员 A 导出的冻结语料和待核对结果（各 ≤5 MiB）。"
                         "按文献名+段号检查页码及原文，不加载模型、不改标签、不计算效果分数。"
@@ -879,20 +964,38 @@ def build_app(backend_python=None):
                     corpus_status = gr.Textbox(
                         label="两个所选文件的核对结果", lines=10, interactive=False
                     )
-                demo_button = gr.Button("加载演示样例（非真实结果）")
-                clear_button = gr.Button("清空结果")
+                demo_button = gr.Button("加载演示样例（非真实结果）", elem_id="demo-action")
+                clear_button = gr.Button("清空结果", elem_id="clear-action")
                 gr.Markdown(
                     "检索 P/R/MRR 由成员 A 的工具评测，需真实语料和复核标签；"
                     "综述/NLI 效果另行验收。"
-                    "点击证据高亮的是返回的原文片段，不是 PDF 原页坐标。"
+                    "点击证据高亮的是返回的原文片段，不是 PDF 原页坐标。",
+                    elem_id="method-note",
                 )
-            with gr.Column(scale=2):
-                status = gr.Textbox(label="运行状态与来源", interactive=False, lines=3)
-                review = gr.Textbox(label="综述全文", interactive=False, lines=5)
-                provenance = gr.HTML(label="逐句证据溯源", padding=True)
+            with gr.Column(scale=7, min_width=380, elem_id="output-panel"):
+                gr.HTML(
+                    '<div class="panel-title"><span class="step">02 / EVIDENCE</span>'
+                    "<h2>阅读与核查</h2><p>对照原文证据，逐句确认综述的依据。</p></div>"
+                )
+                status = gr.Textbox(
+                    label="运行状态与来源",
+                    value="尚未加载结果 · 可先体验演示样例",
+                    interactive=False,
+                    lines=3,
+                    elem_id="run-status",
+                )
+                review = gr.Textbox(
+                    label="综述全文",
+                    placeholder="生成或导入后，综述将在这里展示。",
+                    interactive=False,
+                    lines=4,
+                    elem_id="review-full",
+                )
+                provenance = gr.HTML(value=EMPTY_WORKSPACE, label="逐句证据溯源", padding=True)
                 files = gr.File(
                     label="下载报告：Markdown / CSV / JSON / HTML", file_count="multiple"
                 )
+        gr.HTML("本地处理 · 文献溯源 · 保留人工判断", elem_id="workspace-footer")
         outputs = [status, review, provenance, files]
         shared = {"outputs": outputs, "concurrency_id": "review-actions", "concurrency_limit": 1}
 
