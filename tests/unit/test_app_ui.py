@@ -125,3 +125,12 @@ def test_workspace_has_guidance_and_responsive_shell_without_export_css(tmp_path
     paths = app.export_report(app.DEMO_RESULT, is_demo=True)
     exported = next(p for p in paths if str(p).endswith(".html"))
     assert "#output-panel" not in Path(exported).read_text()
+
+
+def test_editorial_shell_keeps_measured_tabs_consistent():
+    # Gradio measures hidden tabs before deciding which tabs go in overflow.
+    # Style the shared container, not only the visible role=tablist controls.
+    assert "#input-panel .tab-container button" in app.UI_CSS
+    assert "local-badge" not in app.UI_CSS
+    assert "box-shadow: none" in app.UI_CSS
+    assert "outline: 3px" in app.CSS

@@ -89,65 +89,88 @@ CSS = """
 """
 # App shell styles stay out of standalone report exports.
 UI_CSS = """
-.gradio-container {max-width: 1440px !important; margin: auto !important;
-  font-family: Inter, "Noto Sans SC", "Microsoft YaHei", sans-serif !important;}
-body {background: #f3f6f8 !important;}
+.gradio-container {max-width: 1500px !important; margin: auto !important;
+  padding: 0 32px !important;
+  font-family: "Noto Sans SC", "Microsoft YaHei", sans-serif !important;}
+body, .gradio-container {background: #faf9f6 !important; color: #292a27;}
 #app-header {border: 0; padding: 0; background: transparent;}
 .workspace-header {display: flex; align-items: center; justify-content: space-between;
-  gap: 24px; padding: 30px 34px; background: #142e3c; color: #fff;
-  border-radius: 20px; margin-bottom: 6px;}
-.workspace-header .eyebrow {font-size: 11px; letter-spacing: .22em; color: #a8d9d5;}
-.workspace-header h1 {font-size: 29px; line-height: 1.5; margin: 8px 0 5px; color: #fff;}
-.workspace-header p {margin: 0; color: #c5d5dd; font-size: 14px;}
-.local-badge {border: 1px solid #42606b; padding: 8px 13px; border-radius: 30px;
-  font-size: 12px; white-space: nowrap; color: #d0eae6;}
-#boundary {padding: 10px 16px; border-radius: 10px; background: #e8f1f2;}
-#boundary p {font-size: 12px; color: #395964; margin: 0;}
-#input-panel, #output-panel {background: white; border: 1px solid #dde6eb;
-  border-radius: 18px; padding: 20px; box-shadow: 0 4px 18px #15334706;}
-#input-panel {gap: 14px;}
-.panel-title {margin-bottom: 2px;}
-.panel-title .step {font-size: 11px; letter-spacing: .12em; color: #087f7c; font-weight: 700;}
-.panel-title h2 {font-size: 20px; color: #183644; margin: 5px 0;}
-.panel-title p {font-size: 12px; color: #627985; margin: 0;}
-#input-panel .tab-nav {gap: 0; flex-wrap: wrap;}
-#input-panel .tab-nav button {font-size: 12px; padding: 9px 10px;}
-#run-status textarea {background: #f0f7f6; color: #275953; font-size: 12px;}
-#review-full textarea {line-height: 1.9; font-size: 14px;}
-#input-panel button, #output-panel button {border-radius: 10px;}
-#demo-action {background: #edf6f5; color: #176b66; border: 1px solid #c5dedb;}
-#clear-action {background: white; color: #657986; border: 1px solid #dce5e9;}
+  gap: 24px; padding: 22px 0 18px; border-bottom: 1px solid #292a27;}
+.workspace-header h1 {font-family: Georgia, "Noto Serif CJK SC", serif;
+  font-size: 24px; font-weight: 500; line-height: 1.3; margin: 0; color: #252622;}
+.workspace-header h1 span {font-family: sans-serif; font-size: 12px; font-weight: 400;
+  color: #65665f; margin-left: 16px;}
+.workspace-header p {margin: 0; color: #65665f; font-size: 12px;}
+#boundary {padding: 0 0 8px; background: transparent;}
+#boundary p {font-size: 11px; color: #6c6b62; margin: 0; line-height: 1.6;}
+#workspace-row {gap: 0; align-items: stretch;}
+#input-panel {padding: 6px 24px 24px 0; border-right: 1px solid #dcdad2; gap: 12px;}
+#output-panel {padding: 6px 0 24px 28px; gap: 14px;}
+.panel-title {padding: 4px 0 14px; border-bottom: 1px solid #dcdad2;}
+.panel-title h2 {font-size: 15px; font-weight: 600; color: #292a27; margin: 0;}
+.panel-title p {font-size: 11px; color: #72726b; margin: 5px 0 0;}
+#input-panel .tab-container {gap: 0; flex-wrap: wrap; border-bottom-color: #dcdad2;}
+#input-panel .tab-container button {font-size: 12px; padding: 8px;}
+#input-panel .tab-container button.selected {color: #333d30; border-color: #333d30;}
+#input-panel button, #output-panel button {border-radius: 3px; box-shadow: none;}
+#input-panel textarea, #output-panel textarea {border-radius: 2px;}
+#input-panel .block, #output-panel .block {box-shadow: none;}
+#input-panel .file-preview, #input-panel .upload-container {border-radius: 3px;}
+#input-panel button[aria-label="Click to upload or drop files"] {min-height: 110px;}
+#run-status textarea {background: #f0efe9; color: #5c5e55; font-size: 11px; line-height: 1.7;}
+#review-full textarea {background: #fffefa; line-height: 1.9; font-size: 15px;
+  font-family: "Noto Serif CJK SC", "Songti SC", Georgia, serif;}
+#demo-action {background: transparent; color: #44483c; border: 1px solid #cfcec4; font-size: 12px;}
+#clear-action {background: transparent; color: #6c6b62; border: 1px solid #cfcec4; font-size: 12px;}
 #output-panel .review-trace {font-size: 13px;}
-#output-panel .review-trace h3 {font-size: 15px; color: #213f4d;}
-#output-panel .trace-sentence {background: #f8fafb; border-color: #dce7eb;}
-#output-panel .trace-evidence {border-left: 3px solid #57a6a0; background: #f5faf9;}
-#output-panel .trace-sentence-link {text-decoration: none; color: #263e4a;
-  font-size: 14px; line-height: 1.9;}
-#output-panel .trace-citation {font-size: 12px; color: #0b716f;
-  border-radius: 6px; padding: 6px 8px; background: #e8f2f1; margin-top: 6px;
-  text-decoration: none;}
-#output-panel .trace-citation:hover {background: #d6eae7;}
-#output-panel .trace-meta {color: #627984; font-size: 11px;}
-#output-panel .trace-warning {font-size: 12px; color: #9b5a13;}
-.empty-workspace {text-align: center; padding: 40px 24px; background: #f8fafb;
-  border: 1px dashed #cbdce2; border-radius: 14px; color: #627985;}
-.empty-workspace .empty-symbol {font-size: 26px; color: #168782; margin-bottom: 12px;}
-.empty-workspace h3 {font-size: 17px; color: #284451; margin: 8px 0;}
-.empty-workspace p {font-size: 13px; line-height: 1.9; margin: 0;}
-#method-note p, #model-note p, #upload-note p {font-size: 12px; color: #637580; line-height: 1.7;}
-#workspace-footer {text-align: center; padding: 12px; color: #72838d; font-size: 11px;}
+#output-panel .review-trace h3 {font-size: 13px; color: #34362f; margin: 12px 0; font-weight: 600;}
+#output-panel .review-trace h4 {font-size: 12px; font-weight: 500; color: #65665f;}
+#output-panel .trace-columns {gap: 24px;}
+#output-panel .trace-review {border-right: 1px solid #dcdad2; padding-right: 20px;}
+#output-panel .trace-sentence {background: transparent; border: 0;
+  border-bottom: 1px solid #deddd5; border-radius: 0; padding: 0 0 16px; margin: 0 0 18px;}
+#output-panel .trace-sentence > strong {color: #77796c; font: 11px monospace;}
+#output-panel .trace-evidence {border: 0; border-left: 2px solid #b5b8a5;
+  border-radius: 0; padding: 4px 0 4px 14px; margin: 12px 0 20px; background: transparent;}
+#output-panel .trace-evidence > strong {font-size: 12px; font-weight: 500;}
+#output-panel .trace-evidence:target {border: 0; border-left: 3px solid #787548;
+  background: #f4f0d6 !important; padding: 10px 12px;}
+#output-panel .trace-sentence-link {color: #30312b; text-decoration: none;
+  font-family: "Noto Serif CJK SC", "Songti SC", Georgia, serif; font-size: 14px; line-height: 1.9;}
+#output-panel .trace-sentence-link:hover {text-decoration: underline; text-underline-offset: 4px;}
+#output-panel .trace-citation {font-size: 11px; color: #515d40; padding: 4px 0;
+  margin-top: 2px; text-decoration: underline; text-underline-offset: 3px;}
+#output-panel .trace-citation:hover {color: #252c20; background: #efeee6;}
+#output-panel .trace-meta {color: #72736a; font-size: 10px; margin: 5px 0;}
+#output-panel .trace-text {font-size: 13px; line-height: 1.8;}
+#output-panel .trace-warning {font-size: 11px; color: #946527; font-weight: 400;}
+.empty-workspace {padding: 54px 24px 64px; border-top: 1px solid #dcdad2;
+  color: #74756b; background: transparent;}
+.empty-workspace .empty-index {font: 12px Georgia, serif; color: #999b8b;}
+.empty-workspace h3 {font-family: "Noto Serif CJK SC", Georgia, serif;
+  font-size: 22px; font-weight: 400; color: #42473a; margin: 16px 0 12px;}
+.empty-workspace p {font-size: 12px; line-height: 1.9; margin: 0;}
+#method-note p, #model-note p, #upload-note p {font-size: 11px; color: #72736a; line-height: 1.7;}
+#workspace-footer {border-top: 1px solid #dcdad2; padding: 12px 0;
+  color: #818276; font-size: 10px; text-align: left;}
 @media (max-width: 760px) {
-  .workspace-header {padding: 22px; align-items: flex-start; flex-direction: column; gap: 16px;}
-  .workspace-header h1 {font-size: 24px;}
+  .gradio-container {padding: 0 18px !important;}
+  .workspace-header {padding: 20px 0 14px; align-items: flex-start; gap: 12px;}
+  .workspace-header h1 {font-size: 21px;}
+  .workspace-header h1 span {display: block; margin: 7px 0 0; font-size: 11px;}
+  .workspace-header p {font-size: 10px; max-width: 70px; text-align: right;}
   #workspace-row {flex-direction: column !important;}
-  #input-panel, #output-panel {padding: 14px; min-width: 0 !important; width: 100%;}
+  #input-panel, #output-panel {padding: 8px 0 24px; border: 0;
+    min-width: 0 !important; width: 100%;}
+  #output-panel {border-top: 1px solid #292a27; padding-top: 20px;}
+  #output-panel .trace-review {border-right: 0; padding-right: 4px;}
 }
 """
 EMPTY_WORKSPACE = (
-    '<div class="empty-workspace"><div class="empty-symbol" aria-hidden="true">◎</div>'
-    "<h3>让每一句综述，都有据可查</h3>"
-    "<p>上传文献并提出问题，或导入已有结果。<br>"
-    "也可以点击「加载演示样例」，先体验逐句证据溯源。</p></div>"
+    '<div class="empty-workspace"><span class="empty-index">READING DESK / 01</span>'
+    "<h3>从一个研究问题开始。</h3>"
+    "<p>在左侧上传文献，或导入已有结果。<br>"
+    "综述与原文将在这里并排展示，便于逐句核查。<br>也可选择「加载演示样例」查看交互。</p></div>"
 )
 DEMO_RESULT = {
     "query": "【演示】如何查看逐句证据？",
@@ -893,32 +916,32 @@ def build_app(backend_python=None):
     with gr.Blocks(
         title="可信可溯源科研综述辅助系统",
         css=CSS + UI_CSS,
-        theme=gr.themes.Soft(primary_hue="teal", secondary_hue="slate", neutral_hue="slate").set(
+        theme=gr.themes.Base(primary_hue="stone", secondary_hue="stone", neutral_hue="stone").set(
             block_label_background_fill="transparent",
             block_label_background_fill_dark="transparent",
-            block_label_text_color="#465e6b",
-            block_label_text_color_dark="#465e6b",
+            block_label_text_color="#5c5e55",
+            block_label_text_color_dark="#5c5e55",
             block_label_text_size="12px",
             block_label_text_weight="500",
             input_shadow="none",
-            button_primary_background_fill="#087f7c",
-            button_primary_background_fill_hover="#086a68",
+            button_primary_background_fill="#454d3d",
+            button_primary_text_color="#ffffff",
+            button_primary_background_fill_hover="#32392c",
         ),
         analytics_enabled=False,
         delete_cache=(3600, 86400),
     ) as demo:
         gr.HTML(
-            '<header class="workspace-header"><div><div class="eyebrow">TRUSTED REVIEW</div>'
-            "<h1>科研综述 · 逐句溯源</h1><p>从文献到综述，让证据始终在场。</p></div>"
-            '<span class="local-badge">本地工作空间 · 人工核查辅助</span></header>',
+            '<header class="workspace-header"><h1>Trusted Review'
+            "<span>文献阅读与证据核查</span></h1><p>本地研究工作台</p></header>",
             elem_id="app-header",
         )
         gr.Markdown(f"使用边界：{NOTICE}", elem_id="boundary")
         with gr.Row(elem_id="workspace-row"):
-            with gr.Column(scale=4, min_width=340, elem_id="input-panel"):
+            with gr.Column(scale=3, min_width=320, elem_id="input-panel"):
                 gr.HTML(
-                    '<div class="panel-title"><span class="step">01 / MATERIALS</span>'
-                    "<h2>准备研究资料</h2><p>选择文献生成，或接续已有研究结果。</p></div>"
+                    '<div class="panel-title"><h2>资料与问题</h2>'
+                    "<p>新建综述 · 导入结果 · 核对语料</p></div>"
                 )
                 with gr.Tab("文献生成", elem_id="source-tabs"):
                     pdf = gr.File(
@@ -931,7 +954,7 @@ def build_app(backend_python=None):
                     )
                     query = gr.Textbox(
                         label="研究问题",
-                        lines=3,
+                        lines=2,
                         placeholder="这些论文采用了哪些方法，有什么共同点与差异？",
                     )
                     with gr.Accordion("检索与匹配参数", open=False):
@@ -972,10 +995,10 @@ def build_app(backend_python=None):
                     "点击证据高亮的是返回的原文片段，不是 PDF 原页坐标。",
                     elem_id="method-note",
                 )
-            with gr.Column(scale=7, min_width=380, elem_id="output-panel"):
+            with gr.Column(scale=8, min_width=380, elem_id="output-panel"):
                 gr.HTML(
-                    '<div class="panel-title"><span class="step">02 / EVIDENCE</span>'
-                    "<h2>阅读与核查</h2><p>对照原文证据，逐句确认综述的依据。</p></div>"
+                    '<div class="panel-title"><h2>阅读工作区</h2>'
+                    "<p>选择综述句子，对照原文判断证据是否充分。</p></div>"
                 )
                 status = gr.Textbox(
                     label="运行状态与来源",
@@ -988,14 +1011,14 @@ def build_app(backend_python=None):
                     label="综述全文",
                     placeholder="生成或导入后，综述将在这里展示。",
                     interactive=False,
-                    lines=4,
+                    lines=2,
                     elem_id="review-full",
                 )
                 provenance = gr.HTML(value=EMPTY_WORKSPACE, label="逐句证据溯源", padding=True)
                 files = gr.File(
                     label="下载报告：Markdown / CSV / JSON / HTML", file_count="multiple"
                 )
-        gr.HTML("本地处理 · 文献溯源 · 保留人工判断", elem_id="workspace-footer")
+        gr.HTML("Trusted Review / 文献与证据工作台 · 结果需人工复核", elem_id="workspace-footer")
         outputs = [status, review, provenance, files]
         shared = {"outputs": outputs, "concurrency_id": "review-actions", "concurrency_limit": 1}
 
