@@ -1,7 +1,6 @@
 """独立检索对照评测。不要通过发现 tests/ 下的历史 spike 运行评测。"""
 
 import argparse
-import hashlib
 import json
 import platform
 import sys
@@ -12,6 +11,7 @@ from time import perf_counter
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 METHODS = ("vector", "bm25", "hybrid")
 NOTICE = (
     "仅验证检索功能与评测流程，不能代表真实科研论文表现。"
@@ -19,16 +19,16 @@ NOTICE = (
 )
 
 
-def load_json(path):
-    return json.loads(Path(path).read_text(encoding="utf-8-sig"))
-
-
-def sha256(path):
-    digest = hashlib.sha256()
-    with Path(path).open("rb") as stream:
-        for block in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(block)
-    return digest.hexdigest()
+from retrieval_data import (  # noqa: E402
+    annotation_review,
+    load_corpus,
+    load_json,
+    normalize_queries,
+    paragraph_key,
+    prepare_materials,
+    sha256,
+    validate_dataset,
+)
 
 
 def model_identifier(model_path, default_path):
@@ -36,45 +36,6 @@ def model_identifier(model_path, default_path):
     if model_path.resolve() == default_path.resolve():
         return "BAAI/bge-small-zh-v1.5"
     return f"local:{model_path.name}"
-
-
-def validate_dataset(paragraphs, queries):
-    """模型加载前校验；编号限定为 parser 产生的正整数。"""
-    if not isinstance(paragraphs, list) or not paragraphs:
-        raise ValueError("paragraphs 必须是非空列表")
-    ids = set()
-    for p in paragraphs:
-        if not isinstance(p, dict) or not isinstance(p.get("text"), str) or not p["text"].strip():
-            raise ValueError("段落 text 必须是非空字符串")
-        for key in ("para_id", "page"):
-            if type(p.get(key)) is not int or p[key] <= 0:
-                raise ValueError(f"段落 {key} 必须是正整数")
-        if p["para_id"] in ids:
-            raise ValueError(f"重复 para_id：{p['para_id']}")
-        ids.add(p["para_id"])
-    if not isinstance(queries, list) or not queries:
-        raise ValueError("queries 必须是非空列表")
-    query_ids = set()
-    for q in queries:
-        if not isinstance(q, dict):
-            raise ValueError("query 条目必须为对象")
-        qid = q.get("query_id")
-        if not isinstance(qid, str) or not qid.strip() or qid in query_ids:
-            raise ValueError("query_id 必须为唯一非空字符串")
-        query_ids.add(qid)
-        if not isinstance(q.get("query"), str) or not q["query"].strip():
-            raise ValueError(f"{qid}: query 不能为空")
-        if q.get("split") not in ("dev", "heldout"):
-            raise ValueError(f"{qid}: split 必须为 dev 或 heldout")
-        relevant = q.get("relevant_para_ids")
-        if (
-            not isinstance(relevant, list)
-            or not relevant
-            or any(type(i) is not int or i <= 0 for i in relevant)
-        ):
-            raise ValueError(f"{qid}: relevant_para_ids 必须是非空正整数列表")
-        if len(set(relevant)) != len(relevant) or not set(relevant) <= ids:
-            raise ValueError(f"{qid}: 相关编号重复或不存在于语料中")
 
 
 def compute_metrics(ranked_ids, relevant_ids, top_k):
@@ -97,6 +58,15 @@ def compute_metrics(ranked_ids, relevant_ids, top_k):
 
 def evaluate(retriever, queries, top_k, min_chinese_ratio):
     """三种模式共用同一模型和索引，保留每种模式的结果次序。"""
+    if any("relevant_paragraphs" not in q for q in queries):
+        corpus = getattr(retriever, "corpus", None)
+        if corpus is None:
+            # Compatibility for standalone legacy callers without a corpus attribute.
+            corpus = [
+                {"para_id": i}
+                for i in sorted({i for q in queries for i in q.get("relevant_para_ids", [])})
+            ]
+        queries = normalize_queries(corpus, queries)
     details = []
     for q in queries:
         for method in METHODS:
@@ -105,15 +75,17 @@ def evaluate(retriever, queries, top_k, min_chinese_ratio):
                 q["query"], top_k=top_k, min_chinese_ratio=min_chinese_ratio, method=method
             )
             elapsed = perf_counter() - start
-            relevant = set(q["relevant_para_ids"])
+            relevant = {paragraph_key(ref) for ref in q["relevant_paragraphs"]}
             details.append(
                 {
                     **q,
                     "method": method,
                     "query_seconds": elapsed,
-                    "metrics": compute_metrics([r["para_id"] for r in results], relevant, top_k),
+                    "metrics": compute_metrics(
+                        [paragraph_key(r) for r in results], relevant, top_k
+                    ),
                     "ranking": [
-                        {**r, "rank": rank, "hit": r["para_id"] in relevant}
+                        {**r, "rank": rank, "hit": paragraph_key(r) in relevant}
                         for rank, r in enumerate(results, 1)
                     ],
                 }
@@ -151,10 +123,50 @@ def model_manifest(path):
     }
 
 
+def markdown_text(text):
+    import html
+
+    escaped = html.escape(str(text)).replace("\n", " ").replace("\r", " ")
+    for symbol in ("\\", "`", "*", "_", "[", "]", "|", "#"):
+        escaped = escaped.replace(symbol, "\\" + symbol)
+    return escaped
+
+
+def analyze_cases(details):
+    indexed = {(d["query_id"], d["method"]): d for d in details}
+    groups = {name: [] for name in ("improved", "unchanged", "declined", "missed", "no_results")}
+    for row in details:
+        if row["method"] != "hybrid":
+            continue
+        base = indexed[(row["query_id"], "vector")]
+        delta = {m: row["metrics"][m] - base["metrics"][m] for m in ("precision", "recall", "mrr")}
+        case = {
+            "query_id": row["query_id"],
+            "query": row.get("query", ""),
+            "split": row["split"],
+            "delta": delta,
+            "vector_ranking": base.get("ranking", []),
+            "hybrid_ranking": row.get("ranking", []),
+            "cause": "待人工对照原文核查，不根据指标自动推断原因",
+        }
+        if any(d < 0 for d in delta.values()):
+            groups["declined"].append(case)
+        if any(d > 0 for d in delta.values()):
+            groups["improved"].append(case)
+        if all(d == 0 for d in delta.values()):
+            groups["unchanged"].append(case)
+        if row["metrics"]["recall"] < 1:
+            groups["missed"].append(case)
+        if not row.get("ranking"):
+            groups["no_results"].append(case)
+    return groups
+
+
 def markdown_report(report):
     m = report["metadata"]
+    preliminary = m.get("evaluation_status", "preliminary") != "reviewed_declared"
     lines = [
-        "# 检索对照评测",
+        "# 检索对照评测" + ("（初步评测，未完成复核）" if preliminary else "（已声明独立复核）"),
         "",
         m["notice"],
         "",
@@ -172,6 +184,23 @@ def markdown_report(report):
         "耗时是本机顺序执行的观察值，包含首次调用开销，不作为性能承诺。",
         "",
     ]
+    review = m.get("annotation_review", {})
+    lines += [
+        f"- 复核状态：{review.get('status', 'unspecified')}；"
+        "复核信息为人工声明，程序不代替人工确认。",
+        "",
+        "## 文献清单",
+        "",
+        "| 文献 source | 段落数 | 原 PDF SHA-256 | 段落 SHA-256 |",
+        "|---|---:|---|---|",
+    ]
+    for document in m.get("corpus_manifest", {}).get("documents", []):
+        source = markdown_text(document["source"] or "旧单篇语料")
+        lines.append(
+            f"| {source} | {document['paragraph_count']} | "
+            f"{document.get('pdf_sha256', '未提供')} | {document['parsed_paragraphs_sha256']} |"
+        )
+    lines.append("")
     for split, methods in report["summary"].items():
         if not methods:
             continue
@@ -209,6 +238,48 @@ def markdown_report(report):
         lines.append(
             "本次未观察到 hybrid 漏召回或相对 vector 的 Recall/MRR 下降；不代表真实语料表现。"
         )
+    lines += [
+        "",
+        "## 案例分类与待核查原因",
+        "",
+        "原因需区分解析、分词、语义召回、语言过滤、候选截取和标注争议；不可仅凭分数下结论。",
+        "",
+    ]
+    for group, cases in report.get("case_analysis", analyze_cases(report["details"])).items():
+        lines.append(
+            f"- {group}："
+            + (
+                "、".join(markdown_text(c["query_id"]) for c in cases)
+                if cases
+                else "本次不存在此类案例"
+            )
+        )
+    lines += ["", "## 逐查询排名", ""]
+    for detail in report["details"]:
+        lines += [
+            f"### {markdown_text(detail['query_id'])} · {detail['method']} · {detail['split']}",
+            "",
+            markdown_text(detail.get("query", "")),
+            "",
+        ]
+        if not detail.get("ranking"):
+            lines += ["无返回结果。", ""]
+        for row in detail.get("ranking", []):
+            lines += [
+                f"- 排名 {row['rank']}：{markdown_text(row.get('source', '') or '旧单篇语料')} · "
+                f"第{row['page']}页 · 第{row['para_id']}段 · "
+                f"{'命中' if row['hit'] else '未命中'}；score={row['score']:.6f}",
+                f"  原文：{markdown_text(row['text'])}",
+                "",
+            ]
+    lines += ["## 标注复核声明", "", review.get("notice", "未提供复核说明。"), ""]
+    for row in review.get("queries", []):
+        lines.append(
+            f"- {markdown_text(row['query_id'])}: {markdown_text(str(row['annotation_status']))}；"
+            f"标注者 {markdown_text(str(row['annotator']))}；"
+            f"复核者 {markdown_text(str(row['reviewer']))}；"
+            f"说明 {markdown_text(str(row['review_notes']))}"
+        )
     return "\n".join(lines) + "\n"
 
 
@@ -216,41 +287,51 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     source = parser.add_mutually_exclusive_group(required=True)
     source.add_argument("--paragraphs", type=Path)
-    source.add_argument("--pdf", type=Path)
-    parser.add_argument("--queries", type=Path, required=True)
+    source.add_argument("--pdf", type=Path, nargs="+")
+    parser.add_argument("--queries", type=Path)
     parser.add_argument("--model-path", type=Path)
     parser.add_argument("--top-k", type=int, default=3)
     parser.add_argument("--min-chinese-ratio", type=float, default=0.3)
     parser.add_argument("--output-dir", type=Path, default=ROOT / "results/retrieval")
-    parser.add_argument("--validate-only", action="store_true")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--validate-only", action="store_true")
+    mode.add_argument("--prepare-only", action="store_true")
     parser.add_argument("--split", choices=("all", "dev", "heldout"), default="all")
     args = parser.parse_args(argv)
     if args.top_k <= 0 or not 0 <= args.min_chinese_ratio <= 1:
         parser.error("top-k 必须为正数，min-chinese-ratio 必须在 0 到 1 之间")
+    if not args.prepare_only and args.queries is None:
+        parser.error("评测或校验必须提供 --queries；准备标注材料使用 --prepare-only")
+    if args.prepare_only and args.queries is not None:
+        parser.error("--prepare-only 不读取查询，请省略 --queries")
     try:
-        if args.pdf:
-            from parser import parse_pdf
-
-            paragraphs = parse_pdf(str(args.pdf))
-            corpus_kind = "unverified_pdf"
-        else:
-            payload = load_json(args.paragraphs)
-            corpus_kind = (
-                payload.get("dataset_type", "unverified")
-                if isinstance(payload, dict)
-                else "unverified"
-            )
-            paragraphs = payload["paragraphs"] if isinstance(payload, dict) else payload
+        paragraphs, corpus_kind, corpus_manifest = load_corpus(
+            pdf_paths=args.pdf, paragraphs_path=args.paragraphs
+        )
+        if args.prepare_only:
+            prepare_materials(paragraphs, corpus_kind, corpus_manifest, args.output_dir)
+            print(f"标注材料已写入 {args.output_dir}；未加载模型、未生成评测分数。")
+            return 0
+        if not args.validate_only and any(
+            (args.output_dir / name).exists() for name in ("report.json", "report.md")
+        ):
+            raise ValueError("输出目录已有评测报告，请指定新的 --output-dir，保留历史实验记录")
         query_payload = load_json(args.queries)
-        queries = query_payload["queries"] if isinstance(query_payload, dict) else query_payload
-        validate_dataset(paragraphs, queries)
+        raw_queries = query_payload["queries"] if isinstance(query_payload, dict) else query_payload
+        queries = validate_dataset(paragraphs, raw_queries)
+        # 检查全部标签与冻结语料绑定，再选择实际执行的集合。
+        annotation_review(query_payload, queries, corpus_manifest["parsed_paragraphs_sha256"])
         if args.split != "all":
             queries = [q for q in queries if q["split"] == args.split]
             if not queries:
                 raise ValueError(f"查询文件不包含 {args.split} 查询")
+        review = annotation_review(
+            query_payload, queries, corpus_manifest["parsed_paragraphs_sha256"]
+        )
         if args.validate_only:
             print(
-                f"校验通过：{len(paragraphs)} 段，{len(queries)} 条查询。未加载模型、未运行效果评测。"
+                f"校验通过：{len(paragraphs)} 段，{len(queries)} 条查询。"
+                "未加载模型、未运行效果评测。"
             )
             return 0
         from retriever import DEFAULT_MODEL_PATH, Retriever
@@ -298,10 +379,19 @@ def main(argv=None):
             "rrf": {"k": 60, "weights": [0.5, 0.5]},
             "candidate_limit": "min(eligible_count, max(20, top_k))",
             "tokenizer": "jieba default dictionary; HMM=False; lowercase; no stopwords",
-            "corpus_sha256": sha256(args.pdf or args.paragraphs),
-            "parsed_paragraphs_sha256": hashlib.sha256(
-                json.dumps(paragraphs, sort_keys=True, ensure_ascii=False).encode("utf-8")
-            ).hexdigest(),
+            "corpus_sha256": (
+                sha256(args.paragraphs)
+                if args.paragraphs
+                else sha256(args.pdf[0])
+                if len(args.pdf) == 1
+                else corpus_manifest["parsed_paragraphs_sha256"]
+            ),
+            "parsed_paragraphs_sha256": corpus_manifest["parsed_paragraphs_sha256"],
+            "corpus_manifest": corpus_manifest,
+            "annotation_review": review,
+            "evaluation_status": "preliminary"
+            if synthetic or review["status"] != "reviewed_declared"
+            else "reviewed_declared",
             "queries_sha256": sha256(args.queries),
             "model_id": model_identifier(model_path, DEFAULT_MODEL_PATH),
             "model_path": str(model_path),
@@ -314,9 +404,16 @@ def main(argv=None):
             "source_files_sha256": {
                 "src/retriever.py": sha256(ROOT / "src/retriever.py"),
                 "scripts/evaluate_retrieval.py": sha256(Path(__file__)),
+                "scripts/retrieval_data.py": sha256(Path(__file__).with_name("retrieval_data.py")),
+                "src/parser.py": sha256(ROOT / "src/parser.py"),
             },
         }
-        report = {"metadata": metadata, "summary": summary, "details": details}
+        report = {
+            "metadata": metadata,
+            "summary": summary,
+            "details": details,
+            "case_analysis": analyze_cases(details),
+        }
         args.output_dir.mkdir(parents=True, exist_ok=True)
         (args.output_dir / "report.json").write_text(
             json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8"
