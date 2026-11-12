@@ -61,8 +61,9 @@ pip install -r requirements.txt
 ## 运行
 1. 启动 llama-server：
    .\llama-server.exe -m qwen2.5-7b-instruct-q4_k_m-00001-of-00002.gguf -ngl 0 --port 8080
-2. 运行端到端原型（中期检查 demo）：
+2. 运行端到端原型（中期检查 demo，默认读 `data/corpus/` 多篇语料）：
    python src/pipeline.py
+   语料就位后即可演示「多篇文献库 → 检索 → 综述生成 → 逐句溯源」。
 
 ### 成员 B 界面（可离线验收）
 
@@ -90,7 +91,7 @@ python src/app.py
 - [x] 句级证据匹配接入 pipeline（端到端原型跑通）
 - [x] BM25 / BGE RRF 混合检索 + 检索评测工具（组员 A）
 - [x] Gradio 界面（单篇，组员 B）
-- [ ] **多篇文献库**（加 `source` 字段，本次冲刺 D1–D2）
+- [x] **多篇文献库**（加 `source` 字段 + 5 篇 RAG 主题文献，D1–D2 完成）
 - [ ] 左右对照 UI（本次冲刺 D3）
 - [ ] 真实文献评测 + 人工标注（本次冲刺 D4–D5）
 - [ ] 评价指标（公式待定，结题做）

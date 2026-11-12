@@ -96,7 +96,11 @@ if __name__ == "__main__":
     import sys
     sys.stdout.reconfigure(encoding="utf-8")
 
-    pdf_path = "../data/papers/基于双边网格滤波的3D高斯辐射场无人机SLAM方法_高连科.pdf"
-    query = "这篇论文提出了什么方法来解决光照变化问题？"
-    result = run_review(query, pdf_path)
+    repo_root = Path(__file__).resolve().parent.parent
+    pdf_paths = [str(p) for p in sorted((repo_root / "data" / "corpus").glob("*.pdf"))]
+    if not pdf_paths:
+        sys.exit("未找到语料：请把 PDF 放入 data/corpus/ 后重试")
+
+    query = "检索增强生成（RAG）的核心框架、关键技术与发展现状是什么？"
+    result = run_review(query, pdf_paths)
     _print_result(result)

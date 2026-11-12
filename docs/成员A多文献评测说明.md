@@ -24,14 +24,18 @@ uv pip check --python venv/Scripts/python.exe
 
 ## 第一步：接收并冻结语料
 
-由组长确定主题，全员协作准备目标 5 篇论文，演示最低 3 篇。文件放本地 `data/papers/`，
+由组长确定主题，全员协作准备目标 5 篇论文，演示最低 3 篇。文件放本地 `data/corpus/`，
 文件名主体不能重复，不要在标注后重命名。只能接收可提取文字的文本型 PDF。
 
 从仓库根目录运行（把示例文件名替换为真实文件名）：
 
 ```powershell
 venv/Scripts/python.exe scripts/evaluate_retrieval.py `
-  --pdf data/papers/论文甲.pdf data/papers/论文乙.pdf data/papers/论文丙.pdf `
+  --pdf data/corpus/基于大型语言模型的检索增强生成综述_刘雪颖.pdf `
+       data/corpus/基于大语言模型的智能问答系统研究综述_任海玉.pdf `
+       data/corpus/大语言模型检索增强生成优化技术研究综述_袁乐.pdf `
+       data/corpus/知识库问答场景中大语言模型私有化研究与应用实践_丁咚.pdf `
+       data/corpus/面向大语言模型的检索增强生成方法研究_曹启航.pdf `
   --prepare-only --output-dir results/retrieval-materials-v1
 ```
 
