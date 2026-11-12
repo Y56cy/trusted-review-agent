@@ -116,3 +116,12 @@ def test_reloading_result_does_not_reuse_previous_selection_anchor():
     assert first_ids and second_ids and first_ids.isdisjoint(second_ids)
     assert set(re.findall(r'href="#([^"]+)"', first)) <= first_ids
     assert set(re.findall(r'href="#([^"]+)"', second)) <= second_ids
+
+
+def test_workspace_has_guidance_and_responsive_shell_without_export_css(tmp_path):
+    assert "加载演示样例" in app.EMPTY_WORKSPACE
+    assert "#workspace-row {flex-direction: column" in app.UI_CSS
+    assert "#output-panel" not in app.CSS
+    paths = app.export_report(app.DEMO_RESULT, is_demo=True)
+    exported = next(p for p in paths if str(p).endswith(".html"))
+    assert "#output-panel" not in Path(exported).read_text()
