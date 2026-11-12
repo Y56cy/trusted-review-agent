@@ -6,6 +6,7 @@ This explicitly synthetic smoke test is not a real model or evaluation run.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import socket
@@ -72,6 +73,50 @@ def main() -> None:
                 assert "来源未核验" in imported[0] and "手工构造" in imported[0]
                 assert imported[1] == result[1]
                 assert all(source in imported[2] for source in sources)
+                paragraphs = [
+                    {k: e[k] for k in ("source", "page", "para_id", "text")}
+                    for e in envelope["result"]["sentences"][0]["evidences"]
+                ]
+
+                def checksum(value):
+                    return hashlib.sha256(
+                        json.dumps(value, sort_keys=True, ensure_ascii=False).encode("utf-8")
+                    ).hexdigest()
+
+                corpus = {
+                    "dataset_type": "synthetic",
+                    "paragraphs": paragraphs,
+                    "parsed_paragraphs_sha256": checksum(paragraphs),
+                    "manifest": {
+                        "paragraph_count": len(paragraphs),
+                        "parsed_paragraphs_sha256": checksum(paragraphs),
+                        "documents": [
+                            {
+                                "source": p["source"],
+                                "paragraph_count": 1,
+                                "parsed_paragraphs_sha256": checksum([p]),
+                            }
+                            for p in paragraphs
+                        ],
+                    },
+                }
+                corpus_path = Path(directory) / "corpus.json"
+                corpus_path.write_text(json.dumps(corpus), "utf-8")
+                checked = client.predict(
+                    handle_file(corpus_path),
+                    handle_file(result[3][2]),
+                    api_name="/check_corpus_evidence",
+                )
+                assert "证据字段一致" in checked and "synthetic" in checked
+                assert "手工构造" in checked and "不代表" in checked
+                corpus["paragraphs"][0]["text"] = "tampered"
+                corpus_path.write_text(json.dumps(corpus), "utf-8")
+                failed_check = client.predict(
+                    handle_file(corpus_path),
+                    handle_file(result[3][2]),
+                    api_name="/check_corpus_evidence",
+                )
+                assert "未完成核对" in failed_check and "校验值" in failed_check
                 legacy = envelope["result"]
                 for sentence in legacy["sentences"]:
                     for evidence in sentence["evidences"]:
@@ -109,7 +154,7 @@ def main() -> None:
                 assert Path(repeated[3][2]) != Path(result[3][2])
                 print(
                     "PASS: 本地 HTTP 服务、后端环境自检、四种下载、JSON 回导、"
-                    "多来源/旧格式回导、五文件上传、同名拦截、清空、失败状态、重复操作。"
+                    "多来源/旧格式回导、冻结语料核对/篡改拒绝、五文件上传、同名拦截、清空、失败状态、重复操作。"
                 )
                 print("仅使用手工演示数据；未验证浏览器视觉效果、真实模型或正式评测。")
             finally:

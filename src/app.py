@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import ast
 import csv
+import hashlib
 import html
 import importlib.metadata
 import importlib.util
@@ -205,6 +206,114 @@ def load_result(path: str | Path) -> tuple[dict, dict]:
         }
         data = data.get("result")
     return validate_result(data), metadata
+
+
+def _paragraph_checksum(paragraphs) -> str:
+    """Member A ce04a5e's frozen-corpus serialization, not a PDF fingerprint."""
+    return hashlib.sha256(
+        json.dumps(paragraphs, sort_keys=True, ensure_ascii=False).encode("utf-8")
+    ).hexdigest()
+
+
+def validate_frozen_corpus(payload) -> tuple[dict, str]:
+    """Validate A's exported snapshot without importing an unmerged evaluation module."""
+    if not isinstance(payload, dict):
+        raise ValueError("请使用成员 A 工具导出的 corpus.json 对象。")
+    paragraphs = payload.get("paragraphs")
+    if not isinstance(paragraphs, list) or not paragraphs or len(paragraphs) > 100_000:
+        raise ValueError("语料 paragraphs 必须是非空数组，最多 100000 段。")
+    index, groups = {}, {}
+    for paragraph in paragraphs:
+        if not isinstance(paragraph, dict):
+            raise ValueError("语料段落必须是对象。")
+        source = _text(paragraph.get("source"), "语料 source")
+        if not source.strip() or not _text(paragraph.get("text"), "语料 text").strip():
+            raise ValueError("语料文献名和原文不能为空。")
+        for field in ("page", "para_id"):
+            if type(paragraph.get(field)) is not int or paragraph[field] < 1:
+                raise ValueError(f"语料 {field} 必须是正整数。")
+        key = (source, paragraph["para_id"])
+        if key in index:
+            raise ValueError("语料存在重复的 (source, para_id)。")
+        index[key] = paragraph
+        groups.setdefault(source, []).append(paragraph)
+    checksum = _paragraph_checksum(paragraphs)
+    manifest = payload.get("manifest")
+    if (
+        payload.get("parsed_paragraphs_sha256") != checksum
+        or not isinstance(manifest, dict)
+        or manifest.get("parsed_paragraphs_sha256") != checksum
+        or type(manifest.get("paragraph_count")) is not int
+        or manifest["paragraph_count"] != len(paragraphs)
+    ):
+        raise ValueError("语料快照或清单校验值/段落数不匹配，请重新导出并复核。")
+    documents = manifest.get("documents")
+    if not isinstance(documents, list) or len(documents) != len(groups):
+        raise ValueError("语料文献清单不完整。")
+    seen = set()
+    for document in documents:
+        if not isinstance(document, dict):
+            raise ValueError("文献清单条目必须是对象。")
+        source = document.get("source")
+        if not isinstance(source, str) or source not in groups or source in seen:
+            raise ValueError("文献清单含未知或重复 source。")
+        seen.add(source)
+        if (
+            type(document.get("paragraph_count")) is not int
+            or document["paragraph_count"] != len(groups[source])
+            or document.get("parsed_paragraphs_sha256") != _paragraph_checksum(groups[source])
+        ):
+            raise ValueError("文献清单的段落数或校验值不匹配。")
+    return index, checksum
+
+
+def check_corpus_evidence(corpus_path, result_path) -> str:
+    """Read-only integration check; no relevance judging, scoring, or review promotion."""
+    notice = (
+        "仅核对所选两个文件，不核验原 PDF、论文真实性、人工复核或综述正确性；"
+        "一致不代表相关性/NLI/正式评测通过。"
+    )
+    try:
+        if not corpus_path or not result_path:
+            raise ValueError("请同时选择冻结语料 corpus.json 和 pipeline/导出结果 JSON。")
+        payload = _read_json(corpus_path)
+        index, checksum = validate_frozen_corpus(payload)
+        kind = _text(payload.get("dataset_type", "unverified"), "dataset_type")
+        result, metadata = load_result(result_path)
+        issues, total, matched, empty = [], 0, 0, 0
+        for i, sentence in enumerate(result["sentences"], 1):
+            if not sentence["evidences"]:
+                empty += 1
+            for j, evidence in enumerate(sentence["evidences"], 1):
+                total += 1
+                prefix = f"第 {i} 句第 {j} 条证据"
+                original = index.get((evidence["source"], evidence["para_id"]))
+                if not evidence["source"].strip():
+                    issues.append(f"{prefix}：缺少文献名，无法核对。")
+                elif original is None:
+                    issues.append(f"{prefix}：(source, para_id) 不在冻结语料中。")
+                else:
+                    different = [k for k in ("page", "text") if evidence[k] != original[k]]
+                    if different:
+                        issues.append(f"{prefix}：{'、'.join(different)} 与冻结语料不一致。")
+                    else:
+                        matched += 1
+        state = "发现不一致" if issues else ("证据字段一致" if total else "无证据可核对")
+        lines = [
+            f"核对结果：{state}。",
+            f"语料类型声明（未核验）：{kind}",
+            f"结果 SHA-256（规范化内容）：{_paragraph_checksum(result)}",
+            f"语料 SHA-256：{checksum}",
+            f"证据 {total} 条，一致 {matched} 条，不一致 {len(issues)} 条；无证据句 {empty} 句。",
+            *issues[:100],
+        ]
+        if len(issues) > 100:
+            lines.append(f"其余 {len(issues) - 100} 条问题未展开，请分批核查。")
+        if metadata["is_demo"] or kind in ("synthetic", "demo", "test"):
+            lines.append(DEMO_NOTICE)
+        return "\n".join([*lines, notice])
+    except (ValueError, OSError) as exc:
+        return f"未完成核对：{exc}\n{notice}"
 
 
 def _source_label(evidence: dict) -> str:
@@ -758,10 +867,22 @@ def build_app(backend_python=None):
                         label="pipeline 结果 JSON（最大 5 MiB）", file_types=[".json"]
                     )
                     import_button = gr.Button("导入并展示")
+                with gr.Tab("联调语料核对"):
+                    gr.Markdown(
+                        "分别上传成员 A 导出的冻结语料和待核对结果（各 ≤5 MiB）。"
+                        "按文献名+段号检查页码及原文，不加载模型、不改标签、不计算效果分数。"
+                    )
+                    corpus_file = gr.File(label="冻结语料 corpus.json", file_types=[".json"])
+                    check_result_file = gr.File(label="待核对结果 JSON", file_types=[".json"])
+                    corpus_button = gr.Button("核对证据与冻结语料")
+                    corpus_status = gr.Textbox(
+                        label="两个所选文件的核对结果", lines=10, interactive=False
+                    )
                 demo_button = gr.Button("加载演示样例（非真实结果）")
                 clear_button = gr.Button("清空结果")
                 gr.Markdown(
-                    "评测跑分暂缓：等待指标公式和人工标注集。"
+                    "检索 P/R/MRR 由成员 A 的工具评测，需真实语料和复核标签；"
+                    "综述/NLI 效果另行验收。"
                     "点击证据高亮的是返回的原文片段，不是 PDF 原页坐标。"
                 )
             with gr.Column(scale=2):
@@ -783,6 +904,21 @@ def build_app(backend_python=None):
         clear_button.click(
             lambda: ("已清空结果。", "", "", None), api_name="clear_result", **shared
         )
+        corpus_button.click(
+            check_corpus_evidence,
+            [corpus_file, check_result_file],
+            [corpus_status],
+            api_name="check_corpus_evidence",
+            concurrency_id="review-actions",
+            concurrency_limit=1,
+        )
+        for input_file in (corpus_file, check_result_file):
+            input_file.change(
+                lambda: "输入已变化，请重新核对。",
+                outputs=[corpus_status],
+                concurrency_id="review-actions",
+                concurrency_limit=1,
+            )
         check_button.click(
             lambda: check_environment(backend_python),
             outputs=[diagnostics],

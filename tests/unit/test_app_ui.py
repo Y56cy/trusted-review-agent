@@ -89,6 +89,15 @@ def test_build_blocks_wires_callbacks_and_serializes_actions(monkeypatch):
         assert diagnostics.concurrency_limit == 1
         assert len(diagnostics.outputs) == 1
         assert diagnostics.outputs[0] not in functions["show_demo"].outputs
+        handoff = functions["check_corpus_evidence"]
+        assert len(handoff.inputs) == 2 and len(handoff.outputs) == 1
+        assert handoff.outputs[0].interactive is False
+        handoff_events = [fn for fn in demo.fns.values() if fn.outputs == handoff.outputs]
+        assert len(handoff_events) == 3
+        for event in handoff_events:
+            assert event.queue is True
+            assert event.concurrency_id == "review-actions"
+            assert event.concurrency_limit == 1
         selected = []
         monkeypatch.setattr(
             app, "check_environment", lambda python: selected.append(python) or "自检结果"
