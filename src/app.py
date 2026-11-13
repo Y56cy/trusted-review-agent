@@ -89,89 +89,121 @@ CSS = """
 """
 # App shell styles stay out of standalone report exports.
 UI_CSS = """
-.gradio-container {max-width: 1500px !important; margin: auto !important;
-  padding: 0 32px !important;
-  font-family: "Noto Sans SC", "Microsoft YaHei", sans-serif !important;}
-body, .gradio-container {background: #faf9f6 !important; color: #292a27;}
-#app-header {border: 0; padding: 0; background: transparent;}
-.workspace-header {display: flex; align-items: center; justify-content: space-between;
-  gap: 24px; padding: 22px 0 18px; border-bottom: 1px solid #292a27;}
-.workspace-header h1 {font-family: Georgia, "Noto Serif CJK SC", serif;
-  font-size: 24px; font-weight: 500; line-height: 1.3; margin: 0; color: #252622;}
-.workspace-header h1 span {font-family: sans-serif; font-size: 12px; font-weight: 400;
-  color: #65665f; margin-left: 16px;}
-.workspace-header p {margin: 0; color: #65665f; font-size: 12px;}
-#boundary {padding: 0 0 8px; background: transparent;}
-#boundary p {font-size: 11px; color: #6c6b62; margin: 0; line-height: 1.6;}
-#workspace-row {gap: 0; align-items: stretch;}
-#input-panel {padding: 6px 24px 24px 0; border-right: 1px solid #dcdad2; gap: 12px;}
-#output-panel {padding: 6px 0 24px 28px; gap: 14px;}
-.panel-title {padding: 4px 0 14px; border-bottom: 1px solid #dcdad2;}
-.panel-title h2 {font-size: 15px; font-weight: 600; color: #292a27; margin: 0;}
-.panel-title p {font-size: 11px; color: #72726b; margin: 5px 0 0;}
-#input-panel .tab-container {gap: 0; flex-wrap: wrap; border-bottom-color: #dcdad2;}
-#input-panel .tab-container button {font-size: 12px; padding: 8px;}
-#input-panel .tab-container button.selected {color: #333d30; border-color: #333d30;}
-#input-panel button, #output-panel button {border-radius: 3px; box-shadow: none;}
-#input-panel textarea, #output-panel textarea {border-radius: 2px;}
+.gradio-container {max-width: 1440px !important; margin: auto !important;
+  padding: 0 clamp(14px, 3vw, 40px) !important;
+  font-family: "Inter", "Noto Sans SC", "Microsoft YaHei", sans-serif !important;}
+.gradio-container > main {padding:12px 0 !important;}
+body, .gradio-container {background: #f7f8fa !important; color: #202b3b;}
+.workspace-header {display:flex; align-items:center; justify-content:space-between;
+  gap:20px; padding:24px 0; border-bottom:1px solid #e1e5ec;}
+.workspace-header h1 {font-size:21px; letter-spacing:-.6px; font-weight:700;
+  margin:0; color:#17243c;}
+.workspace-header h1 span {font-size:12px; font-weight:400; letter-spacing:0;
+  color:#788393; margin-left:22px; border-left:1px solid #d8dfe8; padding-left:22px;}
+.workspace-header p {font-size:11px; color:#788393; margin:0;}
+#app-header, #workspace-footer {padding:0; border:0; background:transparent;}
+#workspace-row {gap:16px;}
+#input-panel {padding:0; gap:14px;}
+#setup-panel {background:#fff; border:1px solid #dde3ec; border-radius:10px;}
+#setup-panel > .label-wrap {padding:8px 12px;}
+#input-panel .tab-container button {font-size:13px; padding:12px 20px;}
+#input-panel .tab-container button.selected {color:#205ac1; border-color:#205ac1;}
+#input-panel .form {background:#fff;}
+#input-panel button, #output-panel button {box-shadow: none; border-radius:6px;}
+#input-panel .upload-container {min-height:150px !important;}
 #input-panel .block, #output-panel .block {box-shadow: none;}
-#input-panel .file-preview, #input-panel .upload-container {border-radius: 3px;}
-#input-panel button[aria-label="Click to upload or drop files"] {min-height: 110px;}
-#run-status textarea {background: #f0efe9; color: #5c5e55; font-size: 11px; line-height: 1.7;}
-#review-full textarea {background: #fffefa; line-height: 1.9; font-size: 15px;
-  font-family: "Noto Serif CJK SC", "Songti SC", Georgia, serif;}
-#demo-action {background: transparent; color: #44483c; border: 1px solid #cfcec4; font-size: 12px;}
-#clear-action {background: transparent; color: #6c6b62; border: 1px solid #cfcec4; font-size: 12px;}
-#output-panel .review-trace {font-size: 13px;}
-#output-panel .review-trace h3 {font-size: 13px; color: #34362f; margin: 12px 0; font-weight: 600;}
-#output-panel .review-trace h4 {font-size: 12px; font-weight: 500; color: #65665f;}
-#output-panel .trace-columns {gap: 24px;}
-#output-panel .trace-review {border-right: 1px solid #dcdad2; padding-right: 20px;}
-#output-panel .trace-sentence {background: transparent; border: 0;
-  border-bottom: 1px solid #deddd5; border-radius: 0; padding: 0 0 16px; margin: 0 0 18px;}
-#output-panel .trace-sentence > strong {color: #77796c; font: 11px monospace;}
-#output-panel .trace-evidence {border: 0; border-left: 2px solid #b5b8a5;
-  border-radius: 0; padding: 4px 0 4px 14px; margin: 12px 0 20px; background: transparent;}
-#output-panel .trace-evidence > strong {font-size: 12px; font-weight: 500;}
-#output-panel .trace-evidence:target {border: 0; border-left: 3px solid #787548;
-  background: #f4f0d6 !important; padding: 10px 12px;}
-#output-panel .trace-sentence-link {color: #30312b; text-decoration: none;
-  font-family: "Noto Serif CJK SC", "Songti SC", Georgia, serif; font-size: 14px; line-height: 1.9;}
-#output-panel .trace-sentence-link:hover {text-decoration: underline; text-underline-offset: 4px;}
-#output-panel .trace-citation {font-size: 11px; color: #515d40; padding: 4px 0;
-  margin-top: 2px; text-decoration: underline; text-underline-offset: 3px;}
-#output-panel .trace-citation:hover {color: #252c20; background: #efeee6;}
-#output-panel .trace-meta {color: #72736a; font-size: 10px; margin: 5px 0;}
-#output-panel .trace-text {font-size: 13px; line-height: 1.8;}
-#output-panel .trace-warning {font-size: 11px; color: #946527; font-weight: 400;}
-.empty-workspace {padding: 54px 24px 64px; border-top: 1px solid #dcdad2;
-  color: #74756b; background: transparent;}
-.empty-workspace .empty-index {font: 12px Georgia, serif; color: #999b8b;}
-.empty-workspace h3 {font-family: "Noto Serif CJK SC", Georgia, serif;
-  font-size: 22px; font-weight: 400; color: #42473a; margin: 16px 0 12px;}
-.empty-workspace p {font-size: 12px; line-height: 1.9; margin: 0;}
-#method-note p, #model-note p, #upload-note p {font-size: 11px; color: #72736a; line-height: 1.7;}
-#workspace-footer {border-top: 1px solid #dcdad2; padding: 12px 0;
-  color: #818276; font-size: 10px; text-align: left;}
+#setup-fields {gap:24px;}
+#setup-fields > div {min-width:0 !important;}
+#utility-actions {gap:12px; margin:4px 0 0;}
+#utility-actions button {flex:0 1 auto; min-width:140px; font-size:12px; font-weight:500;}
+#demo-action, #clear-action {background:transparent; color:#506078; border:1px solid #dde3ec;}
+#clear-action {white-space:nowrap; min-width:96px !important; font-size:12px;}
+#run-status label {background:transparent !important; border:0 !important;}
+#output-panel {padding:0; min-width:0 !important; gap:12px;}
+#reading-toolbar {align-items:center; gap:16px; padding:0;}
+#run-status {border:0; padding:0; background:transparent;}
+#run-status .input-container {background:transparent !important;}
+#run-status textarea {background:transparent; border:0; padding:0; font-size:11px;
+  color:#6b7789; line-height:1.65; box-shadow:none;
+  background:transparent !important;}
+#export-panel {border:1px solid #dde3ec; border-radius:6px; background:#fff;}
+#provenance {padding:0; border:0; background:transparent;}
+.reader {background:#fff; border:1px solid #e1e6ed; border-radius:10px; overflow:hidden;}
+.reader .reader-bar {display:flex; align-items:center; justify-content:space-between;
+  padding:15px 24px; border-bottom:1px solid #e6eaf0; font-size:11px; color:#778296;}
+.reader .reader-bar strong {color:#3d4f68; font-weight:500;}
+.reader .trace-columns {grid-template-columns:minmax(0, 1.8fr) minmax(290px, 1fr); gap:0;}
+.reader .trace-review {padding:36px 42px 44px; max-height:78vh;}
+.reader .trace-sources {padding:28px; border-left:1px solid #e6eaf0; background:#fcfdff;
+  max-height:78vh;}
+.reader h2.reader-title {font-size:26px; letter-spacing:-.5px; line-height:1.5;
+  font-weight:650; margin:0 0 14px; color:#17243c;}
+.reader .reader-eyebrow {color:#3469bc; font-size:11px; letter-spacing:1px; margin:0 0 12px;}
+.reader .reader-summary {font-size:12px; color:#778296; border-bottom:1px solid #e8ecf2;
+  margin:0 0 26px; padding:0 0 22px;}
+.reader .trace-sentence {border:0; border-radius:5px; padding:10px 12px;
+  margin:0 -12px 13px; background:transparent; position:relative;}
+.reader .trace-sentence > strong {font-size:10px; color:#9aa5b5; display:block; margin-bottom:3px;}
+.reader .trace-sentence-link {font-size:16px; line-height:1.95; color:#26364c;
+  text-decoration:none; padding:0;}
+.reader .trace-sentence-link:hover {color:#205ac1;}
+.reader .trace-sentence:has(a:hover), .reader .trace-sentence:focus-within {background:#f0f5ff;}
+.reader .trace-citation {display:inline-block; color:#3768b3; background:#edf3ff;
+  padding:2px 7px; margin:8px 5px 0 0; border-radius:4px; font-size:11px; text-decoration:none;}
+.reader .trace-citation:hover {background:#dce8ff;}
+.reader .trace-sources h3 {font-size:15px; color:#23334c; margin:0 0 20px; font-weight:600;}
+.reader .trace-evidence-group > h4 {font-size:11px; font-weight:400;
+  color:#8490a0; margin:0 0 18px;}
+.reader .trace-evidence {border:0; border-top:1px solid #e3e8ef; border-radius:0;
+  padding:20px 0; margin:0; background:transparent;}
+.reader .trace-evidence:target {background:#f5f8ff !important; color:#26364c !important;
+  border:0; border-top:2px solid #4275c8; padding:18px 10px; scroll-margin-top:20px;}
+.reader .evidence-source {font-size:15px; font-weight:600; line-height:1.7; color:#26364c;}
+.reader .evidence-location {font-size:11px; color:#6b7c91; margin:8px 0 18px;}
+.reader .trace-text {overflow-wrap:anywhere;}
+.reader .evidence-excerpt {font-size:14px; line-height:1.95; border-left:2px solid #c8d5ea;
+  padding-left:14px; margin:0 0 16px; color:#40506a;}
+.reader details {font-size:11px; color:#7a8799;}
+.reader summary {cursor:pointer; padding:5px 0;}
+.reader .trace-warning {font-size:11px; line-height:1.7; color:#9a681f; font-weight:400;}
+.reader .reader-footnote {border-top:1px solid #e8ecf2; padding-top:20px;
+  margin-top:30px; color:#8792a2; font-size:11px; line-height:1.8;}
+.reader:not(:has(:target)) .trace-evidence-group:not(:first-of-type) {display:none;}
+.reader:has(.reader-all:target) .trace-evidence-group {display:block;}
+.empty-workspace {padding:48px 36px; background:#fff; border:1px solid #e1e6ed;
+  border-radius:10px; color:#7b8797;}
+.empty-workspace h3 {font-size:22px; font-weight:550; color:#26364c; margin:0 0 12px;}
+.empty-workspace p {font-size:13px; line-height:1.9; margin:0;}
+#boundary p, #model-note p, #upload-note p {font-size:11px; line-height:1.7; color:#7b8797;}
+#workspace-footer {font-size:10px; color:#98a2af; padding:16px 0 24px;}
+@media (max-width: 900px) {
+ .gradio-container {padding:0 18px !important;}
+ .reader .trace-review {padding:28px;}
+ .reader .trace-columns {grid-template-columns:minmax(0, 1.5fr) minmax(260px, 1fr);}
+ .reader .trace-sources {padding:22px;}
+}
 @media (max-width: 760px) {
-  .gradio-container {padding: 0 18px !important;}
-  .workspace-header {padding: 20px 0 14px; align-items: flex-start; gap: 12px;}
-  .workspace-header h1 {font-size: 21px;}
-  .workspace-header h1 span {display: block; margin: 7px 0 0; font-size: 11px;}
-  .workspace-header p {font-size: 10px; max-width: 70px; text-align: right;}
-  #workspace-row {flex-direction: column !important;}
-  #input-panel, #output-panel {padding: 8px 0 24px; border: 0;
-    min-width: 0 !important; width: 100%;}
-  #output-panel {border-top: 1px solid #292a27; padding-top: 20px;}
-  #output-panel .trace-review {border-right: 0; padding-right: 4px;}
+ #workspace-row {flex-direction: column !important;}
+ #setup-fields {flex-direction:column;}
+ #setup-fields > div {width:100%; flex-basis:auto !important;}
+ .workspace-header {padding:20px 0;}
+ .workspace-header h1 {font-size:19px;}
+ .workspace-header h1 span {display:block; border:0; margin:5px 0 0; padding:0; font-size:11px;}
+ .workspace-header p {display:none;}
+ .reader .trace-columns {grid-template-columns:minmax(0, 1fr);}
+ .reader .trace-review, .reader .trace-sources {max-height:none; padding:24px;}
+ .reader .trace-sources {border-left:0; border-top:1px solid #e6eaf0;}
+ .reader h2.reader-title {font-size:22px;}
+ .reader .trace-sentence-link {font-size:15px;}
+ .reader .reader-bar {padding:12px 18px; gap:12px;}
 }
 """
 EMPTY_WORKSPACE = (
-    '<div class="empty-workspace"><span class="empty-index">READING DESK / 01</span>'
-    "<h3>从一个研究问题开始。</h3>"
-    "<p>在左侧上传文献，或导入已有结果。<br>"
-    "综述与原文将在这里并排展示，便于逐句核查。<br>也可选择「加载演示样例」查看交互。</p></div>"
+    '<div class="empty-workspace"><h3>让每一句综述，都有据可查。</h3>'
+    "<p>添加文献与研究问题，开始生成。已有结果可以直接导入。<br>"
+    "也可选择「加载演示样例」，先体验正文与证据的联动阅读。</p></div>"
 )
+
 DEMO_RESULT = {
     "query": "【演示】如何查看逐句证据？",
     "review": "这是一句用于展示溯源交互的示例。另一句示例暂时没有匹配证据。",
@@ -406,7 +438,7 @@ def _source_label(evidence: dict) -> str:
     return evidence["source"] if evidence["source"].strip() else UNKNOWN_SOURCE
 
 
-def render_provenance(result: dict, *, anchor_prefix: str = "") -> str:
+def render_provenance(result: dict, *, anchor_prefix: str = "", workspace: bool = False) -> str:
     """Select a sentence on the left to filter evidence on the right, without scripts.
 
     Fixed numeric anchors are independent of source names and paragraph IDs.
@@ -416,18 +448,35 @@ def render_provenance(result: dict, *, anchor_prefix: str = "") -> str:
     if not isinstance(anchor_prefix, str) or not re.fullmatch(r"[A-Za-z0-9_-]*", anchor_prefix):
         raise ValueError("证据锚点前缀无效。")
     escape = html.escape
-    parts = ['<section class="review-trace" aria-label="逐句证据溯源">']
-    if not result["sentences"]:
-        parts.append('<p class="trace-warning">没有逐句结果，无法展示证据，请人工核查。</p>')
-    parts.extend(
-        [
+    parts = [
+        '<section class="review-trace reader" aria-label="综述与引用证据">'
+        if workspace
+        else '<section class="review-trace" aria-label="逐句证据溯源">'
+    ]
+    if workspace:
+        parts.append(
+            f'<div class="reader-bar"><strong>阅读与核查</strong><a class="reader-all" '
+            f'id="{anchor_prefix}trace-all" href="#{anchor_prefix}trace-all">全部证据</a></div>'
+        )
+    else:
+        parts.append(
             f'<p id="{anchor_prefix}trace-all">点击左侧句子，在右侧查看对应证据。'
             f'<a href="#{anchor_prefix}trace-all">查看全部证据</a>；'
-            "旧版缺少文献名时显示“文献来源未知”。</p>",
-            '<div class="trace-columns"><div class="trace-review" aria-label="综述逐句选择">',
-            "<h3>综述 · 选择一句</h3>",
-        ]
-    )
+            "旧版缺少文献名时显示“文献来源未知”。</p>"
+        )
+    parts.append('<div class="trace-columns"><div class="trace-review" aria-label="综述逐句选择">')
+    if workspace:
+        parts.append(
+            '<p class="reader-eyebrow">文献综述</p>'
+            f'<h2 class="reader-title">{escape(result["query"])}</h2>'
+            f'<p class="reader-summary">{len(result["sentences"])} 句综述 · 点击句子查看证据</p>'
+        )
+    else:
+        parts.append("<h3>综述 · 选择一句</h3>")
+    if not result["sentences"]:
+        parts.append('<p class="trace-warning">没有逐句结果，无法展示证据，请人工核查。</p>')
+        if workspace:
+            parts.append(f'<p class="trace-text">{escape(result["review"])}</p>')
     for i, item in enumerate(result["sentences"], 1):
         parts.append(f'<article class="trace-sentence"><strong>句 {i}</strong>')
         parts.append(
@@ -435,16 +484,24 @@ def render_provenance(result: dict, *, anchor_prefix: str = "") -> str:
             f"{escape(item['sentence'])}</a>"
         )
         for j, evidence in enumerate(item["evidences"], 1):
+            label = (
+                f"证据 {j} ↗"
+                if workspace
+                else (
+                    f"[证据{j}: {_source_label(evidence)} · "
+                    f"第{evidence['page']}页 第{evidence['para_id']}段]"
+                )
+            )
             parts.append(
-                f'<a class="trace-citation" href="#{anchor_prefix}ev-{i}-{j}">[证据{j}: '
-                f"{escape(_source_label(evidence))} · "
-                f"第{evidence['page']}页 第{evidence['para_id']}段]</a> "
+                f'<a class="trace-citation" href="#{anchor_prefix}ev-{i}-{j}">{escape(label)}</a> '
             )
         if not item["evidences"]:
             parts.append('<p class="trace-warning">未匹配到证据，需人工核查。</p>')
         parts.append("</article>")
     parts.append(
-        '</div><div class="trace-sources" aria-label="对应原文证据"><h3>原文证据 · 文献与位置</h3>'
+        '</div><div class="trace-sources" aria-label="对应原文证据"><h3>'
+        + ("引用证据" if workspace else "原文证据 · 文献与位置")
+        + "</h3>"
     )
     for i, item in enumerate(result["sentences"], 1):
         parts.append(
@@ -456,15 +513,22 @@ def render_provenance(result: dict, *, anchor_prefix: str = "") -> str:
         for j, evidence in enumerate(item["evidences"], 1):
             parts.append(
                 f'<article id="{anchor_prefix}ev-{i}-{j}" class="trace-evidence" tabindex="0">'
-                f"<strong>句 {i} · 证据 {j} · 文献：{escape(_source_label(evidence))} · "
-                f"第{evidence['page']}页 第{evidence['para_id']}段</strong>"
+                f'<div class="evidence-source">{escape(_source_label(evidence))}</div>'
+                f'<p class="evidence-location">句 {i} · 证据 {j} · '
+                f"第{evidence['page']}页 第{evidence['para_id']}段</p>"
+                f'<p class="trace-text evidence-excerpt">{escape(evidence["text"])}</p>'
+                "<details><summary>查看匹配详情</summary>"
                 f'<p class="trace-meta">NLI 标签：{escape(evidence["nli_label"])}；'
-                f"模型概率：{evidence['nli_prob']:.3f}</p>"
-                f'<p class="trace-text">{escape(evidence["text"])}</p></article>'
+                f"模型概率：{evidence['nli_prob']:.3f}</p></details></article>"
             )
         parts.append("</section>")
     parts.append("</div></div></section>")
     return "\n".join(parts)
+
+
+def render_workspace(result: dict, *, anchor_prefix: str) -> str:
+    """Render the same evidence data in a reading-focused application shell."""
+    return render_provenance(result, anchor_prefix=anchor_prefix, workspace=True)
 
 
 def _markdown(text: str) -> str:
@@ -870,14 +934,14 @@ def _display(result: dict, source_name: str, is_demo: bool = False) -> tuple:
     sentence_count = len(result["sentences"])
     matched_count = sum(bool(item["evidences"]) for item in result["sentences"])
     status = (
-        f"{source_name}\n本次问题：{result['query']}\n"
+        f"{source_name} · "
         f"共 {sentence_count} 句，其中 {matched_count} 句返回证据，"
         f"{sentence_count - matched_count} 句未返回证据。这里只统计结果数量，不是正式评测。"
     )
     if is_demo:
         status = DEMO_NOTICE + "\n" + status
     files = export_report(result, source_name=source_name, is_demo=is_demo)
-    rendered = render_provenance(result, anchor_prefix=f"run-{secrets.token_hex(8)}-")
+    rendered = render_workspace(result, anchor_prefix=f"run-{secrets.token_hex(8)}-")
     return status, result["review"], rendered, files
 
 
@@ -915,8 +979,9 @@ def build_app(backend_python=None):
 
     with gr.Blocks(
         title="可信可溯源科研综述辅助系统",
+        fill_width=True,
         css=CSS + UI_CSS,
-        theme=gr.themes.Base(primary_hue="stone", secondary_hue="stone", neutral_hue="stone").set(
+        theme=gr.themes.Base(primary_hue="blue", secondary_hue="slate", neutral_hue="slate").set(
             block_label_background_fill="transparent",
             block_label_background_fill_dark="transparent",
             block_label_text_color="#5c5e55",
@@ -924,113 +989,130 @@ def build_app(backend_python=None):
             block_label_text_size="12px",
             block_label_text_weight="500",
             input_shadow="none",
-            button_primary_background_fill="#454d3d",
+            button_primary_background_fill="#245bbb",
             button_primary_text_color="#ffffff",
-            button_primary_background_fill_hover="#32392c",
+            button_primary_background_fill_hover="#194993",
         ),
         analytics_enabled=False,
         delete_cache=(3600, 86400),
     ) as demo:
         gr.HTML(
             '<header class="workspace-header"><h1>Trusted Review'
-            "<span>文献阅读与证据核查</span></h1><p>本地研究工作台</p></header>",
+            "<span>文献综述工作台</span></h1><p>从研究问题，到可核查的证据</p></header>",
             elem_id="app-header",
         )
-        gr.Markdown(f"使用边界：{NOTICE}", elem_id="boundary")
         with gr.Row(elem_id="workspace-row"):
-            with gr.Column(scale=3, min_width=320, elem_id="input-panel"):
-                gr.HTML(
-                    '<div class="panel-title"><h2>资料与问题</h2>'
-                    "<p>新建综述 · 导入结果 · 核对语料</p></div>"
-                )
-                with gr.Tab("文献生成", elem_id="source-tabs"):
-                    pdf = gr.File(
-                        label="文本型 PDF 文献库（1–10 篇，每篇 ≤50 MiB，总计 ≤200 MiB）",
-                        file_types=[".pdf"],
-                        file_count="multiple",
-                    )
-                    gr.Markdown(
-                        "建议 3–5 篇，文件名（不含扩展名）须互不重复。", elem_id="upload-note"
-                    )
-                    query = gr.Textbox(
-                        label="研究问题",
-                        lines=2,
-                        placeholder="这些论文采用了哪些方法，有什么共同点与差异？",
-                    )
-                    with gr.Accordion("检索与匹配参数", open=False):
-                        top_k = gr.Slider(1, 20, value=3, step=1, label="每句候选证据数量 top_k")
-                        threshold = gr.Slider(0, 1, value=0.7, step=0.05, label="NLI 匹配阈值")
-                    submit = gr.Button("生成综述并匹配证据", variant="primary")
-                    gr.Markdown(
-                        "需要已配置的本地 BGE / NLI / llama-server。"
-                        "缺少模型时使用下方离线导入或演示；不会自动下载模型。",
-                        elem_id="model-note",
-                    )
-                    with gr.Accordion("真实生成环境自检（不运行模型）", open=False):
-                        check_button = gr.Button("检查核心 Python 与本地模型前置条件")
-                        diagnostics = gr.Textbox(
-                            label="自检结果（不代表真实联调通过）", interactive=False, lines=8
+            with gr.Column(elem_id="input-panel"):
+                with gr.Accordion(
+                    "资料与工具 · 新建综述 / 导入 / 核对", open=True, elem_id="setup-panel"
+                ) as setup:
+                    with gr.Tab("文献生成", elem_id="source-tabs"):
+                        with gr.Row(elem_id="setup-fields"):
+                            with gr.Column(scale=1, min_width=260):
+                                pdf = gr.File(
+                                    label="添加文献 · PDF",
+                                    file_types=[".pdf"],
+                                    file_count="multiple",
+                                )
+                                gr.Markdown(
+                                    "1–10 篇文本 PDF，每篇 ≤50 MiB，总计 ≤200 MiB；"
+                                    "文件名须互不重复。",
+                                    elem_id="upload-note",
+                                )
+                            with gr.Column(scale=1, min_width=260):
+                                query = gr.Textbox(
+                                    label="研究问题",
+                                    lines=4,
+                                    placeholder="你希望从这些文献中了解什么？",
+                                )
+                        with gr.Accordion("检索与匹配参数", open=False):
+                            top_k = gr.Slider(
+                                1, 20, value=3, step=1, label="每句候选证据数量 top_k"
+                            )
+                            threshold = gr.Slider(0, 1, value=0.7, step=0.05, label="NLI 匹配阈值")
+                        submit = gr.Button("生成综述并匹配证据", variant="primary")
+                        gr.Markdown(
+                            "需要已配置的本地 BGE / NLI / llama-server。"
+                            "缺少模型时使用下方离线导入或演示；不会自动下载模型。",
+                            elem_id="model-note",
                         )
-                with gr.Tab("结果导入"):
-                    imported = gr.File(
-                        label="pipeline 结果 JSON（最大 5 MiB）", file_types=[".json"]
-                    )
-                    import_button = gr.Button("导入并展示")
-                with gr.Tab("语料核对"):
-                    gr.Markdown(
-                        "分别上传成员 A 导出的冻结语料和待核对结果（各 ≤5 MiB）。"
-                        "按文献名+段号检查页码及原文，不加载模型、不改标签、不计算效果分数。"
-                    )
-                    corpus_file = gr.File(label="冻结语料 corpus.json", file_types=[".json"])
-                    check_result_file = gr.File(label="待核对结果 JSON", file_types=[".json"])
-                    corpus_button = gr.Button("核对证据与冻结语料")
-                    corpus_status = gr.Textbox(
-                        label="两个所选文件的核对结果", lines=10, interactive=False
-                    )
-                demo_button = gr.Button("加载演示样例（非真实结果）", elem_id="demo-action")
-                clear_button = gr.Button("清空结果", elem_id="clear-action")
-                gr.Markdown(
-                    "检索 P/R/MRR 由成员 A 的工具评测，需真实语料和复核标签；"
-                    "综述/NLI 效果另行验收。"
-                    "点击证据高亮的是返回的原文片段，不是 PDF 原页坐标。",
-                    elem_id="method-note",
-                )
-            with gr.Column(scale=8, min_width=380, elem_id="output-panel"):
-                gr.HTML(
-                    '<div class="panel-title"><h2>阅读工作区</h2>'
-                    "<p>选择综述句子，对照原文判断证据是否充分。</p></div>"
-                )
+                        with gr.Accordion("真实生成环境自检（不运行模型）", open=False):
+                            check_button = gr.Button("检查核心 Python 与本地模型前置条件")
+                            diagnostics = gr.Textbox(
+                                label="自检结果（不代表真实联调通过）", interactive=False, lines=8
+                            )
+                    with gr.Tab("结果导入"):
+                        imported = gr.File(
+                            label="pipeline 结果 JSON（最大 5 MiB）", file_types=[".json"]
+                        )
+                        import_button = gr.Button("导入并展示")
+                    with gr.Tab("语料核对"):
+                        gr.Markdown(
+                            "分别上传成员 A 导出的冻结语料和待核对结果（各 ≤5 MiB）。"
+                            "按文献名+段号检查页码及原文，不加载模型、不改标签、不计算效果分数。"
+                        )
+                        corpus_file = gr.File(label="冻结语料 corpus.json", file_types=[".json"])
+                        check_result_file = gr.File(label="待核对结果 JSON", file_types=[".json"])
+                        corpus_button = gr.Button("核对证据与冻结语料")
+                        corpus_status = gr.Textbox(
+                            label="两个所选文件的核对结果", lines=10, interactive=False
+                        )
+                    demo_button = gr.Button("加载演示样例（非真实结果）", elem_id="demo-action")
+        with gr.Column(elem_id="output-panel"):
+            with gr.Row(elem_id="reading-toolbar"):
                 status = gr.Textbox(
                     label="运行状态与来源",
-                    value="尚未加载结果 · 可先体验演示样例",
-                    interactive=False,
-                    lines=3,
-                    elem_id="run-status",
-                )
-                review = gr.Textbox(
-                    label="综述全文",
-                    placeholder="生成或导入后，综述将在这里展示。",
+                    show_label=False,
+                    value="尚未加载结果",
                     interactive=False,
                     lines=2,
+                    max_lines=5,
+                    elem_id="run-status",
+                    scale=5,
+                )
+                clear_button = gr.Button("清空结果", elem_id="clear-action", scale=0, min_width=80)
+                with gr.Accordion("导出报告", open=False, elem_id="export-panel"):
+                    files = gr.File(label="Markdown / CSV / JSON / HTML", file_count="multiple")
+            provenance = gr.HTML(
+                value=EMPTY_WORKSPACE, label="逐句证据溯源", padding=False, elem_id="provenance"
+            )
+            with gr.Accordion("原始综述全文", open=False, elem_id="original-review-panel"):
+                review = gr.Textbox(
+                    label="原始综述全文（完整保留）",
+                    interactive=False,
+                    lines=5,
                     elem_id="review-full",
                 )
-                provenance = gr.HTML(value=EMPTY_WORKSPACE, label="逐句证据溯源", padding=True)
-                files = gr.File(
-                    label="下载报告：Markdown / CSV / JSON / HTML", file_count="multiple"
-                )
-        gr.HTML("Trusted Review / 文献与证据工作台 · 结果需人工复核", elem_id="workspace-footer")
+        gr.Markdown(f"{NOTICE} 高亮仅定位返回的文本片段，不是 PDF 原页。", elem_id="boundary")
+        gr.HTML("Trusted Review · 本地文献研究 · 请结合原文独立复核", elem_id="workspace-footer")
         outputs = [status, review, provenance, files]
         shared = {"outputs": outputs, "concurrency_id": "review-actions", "concurrency_limit": 1}
 
         def generate(query, pdf, top_k, threshold):
             yield from generate_review(query, pdf, top_k, threshold, backend_python=backend_python)
 
-        submit.click(generate, [query, pdf, top_k, threshold], api_name="generate_review", **shared)
-        import_button.click(import_result, [imported], api_name="import_result", **shared)
-        demo_button.click(show_demo, api_name="show_demo", **shared)
-        clear_button.click(
-            lambda: ("已清空结果。", "", "", None), api_name="clear_result", **shared
-        )
+        def settle_workspace(rendered):
+            return gr.update(open=not bool(rendered))
+
+        for event in (
+            submit.click(
+                generate, [query, pdf, top_k, threshold], api_name="generate_review", **shared
+            ),
+            import_button.click(import_result, [imported], api_name="import_result", **shared),
+            demo_button.click(show_demo, api_name="show_demo", **shared),
+            clear_button.click(
+                lambda: ("已清空结果。", "", "", None), api_name="clear_result", **shared
+            ),
+        ):
+            event.then(
+                settle_workspace,
+                [provenance],
+                [setup],
+                api_name=False,
+                concurrency_id="review-actions",
+                concurrency_limit=1,
+            )
+
         corpus_button.click(
             check_corpus_evidence,
             [corpus_file, check_result_file],

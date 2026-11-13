@@ -134,3 +134,53 @@ def test_editorial_shell_keeps_measured_tabs_consistent():
     assert "local-badge" not in app.UI_CSS
     assert "box-shadow: none" in app.UI_CSS
     assert "outline: 3px" in app.CSS
+
+
+def test_workspace_preserves_content_that_matches_ui_labels():
+    # These strings used to be replaced across the entire rendered document.
+    result = json.loads(json.dumps(app.DEMO_RESULT))
+    text = "原文证据 · 文献与位置 [证据1: 文献甲 · 第1页 第1段] <script>例子</script>"
+    result["query"] = text
+    result["review"] = text
+    result["sentences"][0]["sentence"] = text
+    result["sentences"][0]["evidences"][0].update(source="文献甲", text=text)
+    rendered = app.render_workspace(result, anchor_prefix="preserve-")
+    import html
+
+    assert rendered.count(html.escape(text)) == 3  # query, sentence and excerpt
+    assert "<script>" not in rendered
+    assert 'href="#preserve-ev-1-1">证据 1 ↗</a>' in rendered
+    assert "<h3>引用证据</h3>" in rendered
+
+
+def test_partial_sentence_result_keeps_complete_review_accessible():
+    import gradio as gr
+
+    result = {
+        "query": "研究问题",
+        "review": "已匹配的正文。\n仍未进入句级结果的正文。",
+        "sentences": [{"sentence": "已匹配的正文。", "evidences": []}],
+    }
+    outputs = app._display(result, "测试导入")
+    assert outputs[1] == result["review"]
+    demo = app.build_app()
+    try:
+        show_demo = next(fn for fn in demo.fns.values() if fn.api_name == "show_demo")
+        full_review = show_demo.outputs[1]
+        assert full_review.visible is True  # Not an inaccessible hidden API output.
+        parent = full_review.parent
+        while parent is not None and not isinstance(parent, gr.Accordion):
+            assert parent.visible is True
+            parent = parent.parent
+        assert isinstance(parent, gr.Accordion)
+        assert parent.visible is True and parent.open is False
+        assert parent.label == "原始综述全文"
+    finally:
+        demo.close()
+
+
+def test_workspace_without_sentences_displays_full_review_and_warning():
+    result = {"query": "研究问题", "review": "未切分的完整正文。", "sentences": []}
+    rendered = app.render_workspace(result, anchor_prefix="empty-")
+    assert result["review"] in rendered
+    assert "没有逐句结果" in rendered
