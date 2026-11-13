@@ -4,6 +4,7 @@ __pycache__/
 models/
 *.gguf
 data/papers/*.pdf
+data/corpus/*.pdf
 results/*.json
 .env
 .claude
