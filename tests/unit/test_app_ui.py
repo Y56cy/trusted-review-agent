@@ -3,6 +3,7 @@
 import json
 import re
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -11,21 +12,16 @@ import app
 
 @pytest.fixture(autouse=True)
 def isolated_exports(tmp_path, monkeypatch):
-    original = app.export_report
-
-    def export(result, **kwargs):
-        return original(result, tmp_path, **kwargs)
-
-    monkeypatch.setattr(app, "export_report", export)
+    monkeypatch.setattr(app, "_EXPORT_DIR", SimpleNamespace(name=str(tmp_path)))
 
 
 def test_demo_callback_is_explicitly_synthetic():
-    status, review, rendered, paths = app.show_demo()
+    status, review, rendered, paths, review_paths = app.show_demo()
     assert app.DEMO_NOTICE in status
     assert "不是正式评测" in status
     assert review == app.DEMO_RESULT["review"]
     assert re.search(r'id="run-[0-9a-f]+-ev-1-1"', rendered)
-    assert all(Path(path).is_file() for path in paths)
+    assert all(Path(path).is_file() for path in [*paths, *review_paths])
     assert json.loads(Path(paths[2]).read_text("utf-8"))["metadata"]["is_demo"] is True
 
 
@@ -34,9 +30,9 @@ def test_import_callback_and_failure_clear_previous_outputs(tmp_path):
     path.write_text(json.dumps(app.DEMO_RESULT), "utf-8")
     success = app.import_result(path)
     assert "来源未核验" in success[0] and success[1]
-    assert app.import_result(None)[1:] == ("", "", None)
+    assert app.import_result(None)[1:] == ("", "", None, None)
     path.write_text("{", "utf-8")
-    assert app.import_result(path)[1:] == ("", "", None)
+    assert app.import_result(path)[1:] == ("", "", None, None)
 
 
 def test_generation_success_clears_then_displays(monkeypatch):
@@ -49,7 +45,7 @@ def test_generation_success_clears_then_displays(monkeypatch):
     monkeypatch.setattr(app, "run_pipeline", run)
     updates = list(app.generate_review("q", "paper.pdf", 3, 0.7, backend_python="chosen"))
     assert len(updates) == 2
-    assert updates[0][1:] == ("", "", None)
+    assert updates[0][1:] == ("", "", None, None)
     assert updates[1][1] == app.DEMO_RESULT["review"]
     assert received["backend_python"] == "chosen"
 
@@ -63,7 +59,7 @@ def test_generation_failure_clears_stale_outputs(monkeypatch):
     monkeypatch.setattr(app, "run_pipeline", fail)
     updates = list(app.generate_review("q", "paper.pdf", 3, 0.7))
     assert len(updates) == 2
-    assert all(update[1:] == ("", "", None) for update in updates)
+    assert all(update[1:] == ("", "", None, None) for update in updates)
     assert "后端不可用" in updates[-1][0]
 
 
@@ -80,9 +76,9 @@ def test_build_blocks_wires_callbacks_and_serializes_actions(monkeypatch):
         for name in names:
             assert functions[name].concurrency_id == "review-actions"
             assert functions[name].concurrency_limit == 1
-            assert len(functions[name].outputs) == 4
+            assert len(functions[name].outputs) == 5
         assert functions["generate_review"].inputs[1].file_count == "multiple"
-        assert functions["clear_result"].fn()[1:] == ("", "", None)
+        assert functions["clear_result"].fn()[1:] == ("", "", None, None)
         assert "手工构造" in functions["show_demo"].fn()[0]
         diagnostics = functions["check_environment"]
         assert diagnostics.concurrency_id == "review-actions"
@@ -144,7 +140,12 @@ def test_advanced_tools_are_folded_away_from_main_flow():
             if child["id"] == advanced["id"]
         )
         labels = {components[child["id"]]["props"].get("label") for child in children}
-        assert {"结果导入", "检索与匹配设置", "生成环境自检"} <= labels
+        assert {"证据溯源报告", "结果导入", "检索与匹配设置", "生成环境自检"} <= labels
+        assert any(
+            item["props"].get("label") == "下载综述"
+            and item["id"] not in {child["id"] for child in children}
+            for item in components.values()
+        )
     finally:
         demo.close()
 
@@ -198,3 +199,31 @@ def test_workspace_without_sentences_displays_full_review_and_warning():
     rendered = app.render_workspace(result, anchor_prefix="empty-")
     assert result["review"] in rendered
     assert "没有逐句结果" in rendered
+
+
+@pytest.mark.parametrize("is_demo", [False, True])
+def test_review_downloads_include_full_text_and_no_evidence_report(tmp_path, is_demo):
+    from docx import Document
+
+    result = {
+        **app.DEMO_RESULT,
+        "query": "文献讨论了什么？",
+        "review": "第一段 <原文>。\n同段换行。\n\n完整的第二段。",
+    }
+    markdown_path, docx_path = map(Path, app.export_review(result, tmp_path, is_demo=is_demo))
+    markdown = markdown_path.read_text("utf-8")
+    document = Document(docx_path)
+    assert markdown_path.name == "review.md"
+    assert docx_path.name == "review.docx"
+    assert "第一段 &lt;原文&gt;。<br>同段换行。\n\n完整的第二段。" in markdown
+    assert "## 逐句证据对照" not in markdown
+    assert (app.DEMO_NOTICE in markdown) is is_demo
+    assert [paragraph.text for paragraph in document.paragraphs] == [
+        "文献综述",
+        *([app.DEMO_NOTICE] if is_demo else []),
+        "研究问题",
+        result["query"],
+        "综述正文",
+        *result["review"].split("\n\n"),
+    ]
+    assert document.styles["Normal"].paragraph_format.line_spacing == 1.7

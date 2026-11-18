@@ -53,9 +53,10 @@ def main() -> None:
                 result = client.predict(api_name="/show_demo")
                 assert "手工构造" in result[0]
                 assert len(result[3]) == 4
+                assert {Path(path).name for path in result[4]} == {"review.md", "review.docx"}
                 assert 'class="trace-columns"' in result[2]
                 assert re.search(r'href="#run-[0-9a-f]+-sentence-2"', result[2])
-                for filename in result[3]:
+                for filename in [*result[3], *result[4]]:
                     assert Path(filename).is_file() and Path(filename).stat().st_size > 0
                 diagnostics = client.predict(api_name="/check_environment")
                 assert "检查的 Python：" in diagnostics
@@ -126,13 +127,13 @@ def main() -> None:
                 legacy_import = client.predict(handle_file(legacy_path), api_name="/import_result")
                 assert "文献来源未知" in legacy_import[2]
                 cleared = client.predict(api_name="/clear_result")
-                assert cleared[1:] == ("", "", None)
+                assert cleared[1:] == ("", "", None, None)
                 failed = client.predict("", None, 3, 0.7, api_name="/generate_review")
-                assert "请输入问题" in failed[0] and failed[1:] == ("", "", None)
+                assert "请输入问题" in failed[0] and failed[1:] == ("", "", None, None)
                 bad = Path(directory) / "bad.json"
                 bad.write_text("{", "utf-8")
                 failed = client.predict(handle_file(bad), api_name="/import_result")
-                assert "不是有效" in failed[0] and failed[1:] == ("", "", None)
+                assert "不是有效" in failed[0] and failed[1:] == ("", "", None, None)
                 pdfs = []
                 for i in range(5):
                     pdf = Path(directory) / f"synthetic-{i}.pdf"
@@ -141,11 +142,11 @@ def main() -> None:
                 duplicate = client.predict(
                     "重复来源检查", [pdfs[0], pdfs[0]], 3, 0.7, api_name="/generate_review"
                 )
-                assert "重复" in duplicate[0] and duplicate[1:] == ("", "", None)
+                assert "重复" in duplicate[0] and duplicate[1:] == ("", "", None, None)
                 # Valid list reaches the selected backend, which must honestly fail
                 # without models. These minimal headers are not real PDF/model data.
                 uploaded = client.predict("多篇上传检查", pdfs, 3, 0.7, api_name="/generate_review")
-                assert "生成未完成" in uploaded[0] and uploaded[1:] == ("", "", None)
+                assert "生成未完成" in uploaded[0] and uploaded[1:] == ("", "", None, None)
                 repeated = client.predict(api_name="/show_demo")
                 assert repeated[1] == result[1]
                 old_ids = set(re.findall(r'id="([^"]+)"', result[2]))

@@ -1,7 +1,7 @@
 """Member B's local UI: consume the existing pipeline without changing its contract.
 
-Offline imports, rendering and exports use only the standard library. Gradio is
-loaded only by build_app(); model code runs in a separate, time-bounded process.
+Gradio and Word export dependencies are loaded only when used. Model code runs
+in a separate, time-bounded process.
 """
 
 from __future__ import annotations
@@ -535,6 +535,62 @@ def _csv_cell(text: str) -> str:
     return text
 
 
+def _new_export_folder(output_dir: str | Path | None, prefix: str) -> Path:
+    global _EXPORT_DIR
+    if output_dir is None:
+        with _EXPORT_LOCK:
+            if _EXPORT_DIR is None:
+                _EXPORT_DIR = tempfile.TemporaryDirectory(prefix="trusted-review-ui-")
+            output_dir = _EXPORT_DIR.name
+    Path(output_dir).mkdir(parents=True, exist_ok=True)
+    return Path(tempfile.mkdtemp(prefix=prefix, dir=output_dir))
+
+
+def export_review(
+    result: dict, output_dir: str | Path | None = None, *, is_demo: bool = False
+) -> list[str]:
+    """Export the full review independently of evidence reports."""
+    from docx import Document
+    from docx.oxml.ns import qn
+    from docx.shared import Pt
+
+    query = _text(result["query"], "query")
+    review = _text(result["review"], "review").replace("\r\n", "\n").replace("\r", "\n")
+    paragraphs = review.split("\n\n")
+    folder = _new_export_folder(output_dir, "review-")
+    md_file = folder / "review.md"
+    sections = ["# 文献综述"]
+    if is_demo:
+        sections.append(f"> {DEMO_NOTICE}")
+    sections.extend(["## 研究问题", _markdown(query), "## 综述正文"])
+    sections.extend(_markdown(paragraph) for paragraph in paragraphs)
+    md_file.write_text("\n\n".join(sections) + "\n", "utf-8")
+
+    document = Document()
+    document.core_properties.title = "文献综述"
+    for style_name in ("Normal", "Title", "Heading 1"):
+        style = document.styles[style_name]
+        style.font.name = "Microsoft YaHei"
+        style.element.get_or_add_rPr().rFonts.set(qn("w:eastAsia"), "Microsoft YaHei")
+    normal = document.styles["Normal"]
+    normal.font.size = Pt(12)
+    normal.paragraph_format.line_spacing = 1.7
+    normal.paragraph_format.space_after = Pt(8)
+    # Word XML cannot represent some control characters accepted in JSON text.
+    invalid_xml = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\ud800-\udfff\ufffe\uffff]")
+    document.add_heading("文献综述", level=0)
+    if is_demo:
+        document.add_paragraph(DEMO_NOTICE)
+    document.add_heading("研究问题", level=1)
+    document.add_paragraph(invalid_xml.sub("\ufffd", query))
+    document.add_heading("综述正文", level=1)
+    for paragraph in paragraphs:
+        document.add_paragraph(invalid_xml.sub("\ufffd", paragraph))
+    docx_file = folder / "review.docx"
+    document.save(docx_file)
+    return [str(md_file), str(docx_file)]
+
+
 def export_report(
     result: dict,
     output_dir: str | Path | None = None,
@@ -543,18 +599,11 @@ def export_report(
     is_demo: bool = False,
 ) -> list[str]:
     """Create unique per-request reports; user strings never become paths or HTML."""
-    global _EXPORT_DIR
     result = validate_result(result)
     source_name = _text(source_name, "source_name")
     if type(is_demo) is not bool:
         raise ValueError("is_demo 必须是布尔值。")
-    if output_dir is None:
-        with _EXPORT_LOCK:
-            if _EXPORT_DIR is None:
-                _EXPORT_DIR = tempfile.TemporaryDirectory(prefix="trusted-review-ui-")
-            output_dir = _EXPORT_DIR.name
-    Path(output_dir).mkdir(parents=True, exist_ok=True)
-    folder = Path(tempfile.mkdtemp(prefix="report-", dir=output_dir))
+    folder = _new_export_folder(output_dir, "report-")
     metadata = {
         "source_name": source_name,
         "is_demo": is_demo,
@@ -934,13 +983,18 @@ def _display(result: dict, source_name: str, is_demo: bool = False) -> tuple:
     if is_demo:
         status = DEMO_NOTICE + "\n" + status
     files = export_report(result, source_name=source_name, is_demo=is_demo)
+    review_files = export_review(result, is_demo=is_demo)
     rendered = render_workspace(result, anchor_prefix=f"run-{secrets.token_hex(8)}-")
-    return status, result["review"], rendered, files
+    return status, result["review"], rendered, files, review_files
+
+
+def _empty_display(status: str) -> tuple:
+    return status, "", "", None, None
 
 
 def _failed(exc: Exception) -> tuple:
     # Clear all old outputs on failure, so an older report cannot look like this run's result.
-    return f"未完成：{exc}", "", "", None
+    return _empty_display(f"未完成：{exc}")
 
 
 def import_result(path):
@@ -958,14 +1012,14 @@ def show_demo():
 
 
 def generate_review(query, pdf_paths, top_k, nli_threshold, *, backend_python=None):
-    yield "正在生成综述并匹配证据，最多等待 10 分钟……", "", "", None
+    yield _empty_display("正在生成综述并匹配证据，最多等待 10 分钟……")
     try:
         result = run_pipeline(query, pdf_paths, top_k, nli_threshold, backend_python=backend_python)
         names = [Path(path).name for path in _normalize_pdf_paths(pdf_paths)]
         yield _display(result, f"本地生成 · {len(names)} 篇 PDF：" + "、".join(names))
     except ReviewBackendError as exc:
         print(exc, file=sys.stderr)
-        yield "生成未完成。请在「高级」中检查本地生成环境，或先加载演示样例。", "", "", None
+        yield _empty_display("生成未完成。请在「高级」中检查本地生成环境，或先加载演示样例。")
     except (ValueError, OSError) as exc:
         yield _failed(exc)
 
@@ -1031,8 +1085,10 @@ def build_app(backend_python=None):
                     scale=5,
                 )
                 clear_button = gr.Button("清空结果", elem_id="clear-action", scale=0, min_width=80)
-                with gr.Accordion("导出报告", open=False, elem_id="export-panel"):
-                    files = gr.File(label="Markdown / CSV / JSON / HTML", file_count="multiple")
+                with gr.Accordion("下载综述", open=False, elem_id="export-panel"):
+                    review_files = gr.File(
+                        label="Markdown / Word", file_count="multiple", interactive=False
+                    )
             provenance = gr.HTML(
                 value=EMPTY_WORKSPACE, label="逐句证据溯源", padding=False, elem_id="provenance"
             )
@@ -1045,6 +1101,10 @@ def build_app(backend_python=None):
                     elem_id="review-full",
                 )
         with gr.Accordion("高级", open=False, elem_id="advanced-panel"):
+            with gr.Accordion("证据溯源报告", open=False):
+                files = gr.File(
+                    label="Markdown / CSV / JSON / HTML", file_count="multiple", interactive=False
+                )
             with gr.Accordion("结果导入", open=False):
                 imported = gr.File(label="综述结果 JSON（上限 5 MiB）", file_types=[".json"])
                 import_button = gr.Button("导入并展示")
@@ -1065,7 +1125,7 @@ def build_app(backend_python=None):
             "高亮定位的是文本片段，请结合文献原文核查。",
             elem_id="boundary",
         )
-        outputs = [status, review, provenance, files]
+        outputs = [status, review, provenance, files, review_files]
         shared = {"outputs": outputs, "concurrency_id": "review-actions", "concurrency_limit": 1}
 
         def generate(query, pdf, top_k, threshold):
@@ -1075,7 +1135,7 @@ def build_app(backend_python=None):
         import_button.click(import_result, [imported], api_name="import_result", **shared)
         demo_button.click(show_demo, api_name="show_demo", **shared)
         clear_button.click(
-            lambda: ("已清空结果。", "", "", None), api_name="clear_result", **shared
+            lambda: _empty_display("已清空结果。"), api_name="clear_result", **shared
         )
 
         corpus_button.click(
