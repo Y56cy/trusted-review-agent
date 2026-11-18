@@ -120,20 +120,33 @@ def test_reloading_result_does_not_reuse_previous_selection_anchor():
 
 def test_workspace_has_guidance_and_responsive_shell_without_export_css(tmp_path):
     assert "加载演示样例" in app.EMPTY_WORKSPACE
-    assert "#workspace-row {flex-direction: column" in app.UI_CSS
+    assert "max-width:none" in app.UI_CSS
+    assert "#setup-fields {flex-direction:column" in app.UI_CSS
+    assert "grid-template-columns:minmax(0, 2fr) minmax(0, 3fr)" in app.UI_CSS
     assert "#output-panel" not in app.CSS
     paths = app.export_report(app.DEMO_RESULT, is_demo=True)
     exported = next(p for p in paths if str(p).endswith(".html"))
     assert "#output-panel" not in Path(exported).read_text()
 
 
-def test_editorial_shell_keeps_measured_tabs_consistent():
-    # Gradio measures hidden tabs before deciding which tabs go in overflow.
-    # Style the shared container, not only the visible role=tablist controls.
-    assert "#input-panel .tab-container button" in app.UI_CSS
-    assert "local-badge" not in app.UI_CSS
-    assert "box-shadow: none" in app.UI_CSS
-    assert "outline: 3px" in app.CSS
+def test_advanced_tools_are_folded_away_from_main_flow():
+    demo = app.build_app()
+    try:
+        config = demo.get_config_file()
+        components = {item["id"]: item for item in config["components"]}
+        advanced = next(
+            item for item in components.values() if item["props"].get("label") == "高级"
+        )
+        assert advanced["props"]["open"] is False
+        children = next(
+            child["children"]
+            for child in config["layout"]["children"]
+            if child["id"] == advanced["id"]
+        )
+        labels = {components[child["id"]]["props"].get("label") for child in children}
+        assert {"结果导入", "检索与匹配设置", "生成环境自检"} <= labels
+    finally:
+        demo.close()
 
 
 def test_workspace_preserves_content_that_matches_ui_labels():
@@ -168,6 +181,7 @@ def test_partial_sentence_result_keeps_complete_review_accessible():
         show_demo = next(fn for fn in demo.fns.values() if fn.api_name == "show_demo")
         full_review = show_demo.outputs[1]
         assert full_review.visible is True  # Not an inaccessible hidden API output.
+        assert full_review.show_copy_button is True
         parent = full_review.parent
         while parent is not None and not isinstance(parent, gr.Accordion):
             assert parent.visible is True
