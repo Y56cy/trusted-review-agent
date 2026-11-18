@@ -108,6 +108,7 @@ UI_CSS = """
   font-family: "Inter", "Noto Sans SC", "Microsoft YaHei", sans-serif !important;}
 .gradio-container > main {padding:12px 0 !important;}
 body, .gradio-container {background: #f7f8fa !important; color: #202b3b;}
+footer {display:none !important;}
 .workspace-header {padding:14px 0; border-bottom:1px solid #e1e5ec;}
 .workspace-header h1 {font-size:24px; font-weight:700;
   margin:0; color:#17243c;}
@@ -115,7 +116,6 @@ body, .gradio-container {background: #f7f8fa !important; color: #202b3b;}
 #input-panel {padding:14px; gap:12px;
   background:#fff; border:1px solid #dde3ec; border-radius:10px;}
 #input-panel button, #output-panel button {box-shadow: none; border-radius:6px;}
-#input-panel .upload-container {min-height:76px !important;}
 #input-panel .block, #output-panel .block {box-shadow: none;}
 #setup-fields {gap:16px;}
 #setup-fields > div {min-width:0 !important;}
@@ -129,7 +129,7 @@ body, .gradio-container {background: #f7f8fa !important; color: #202b3b;}
 #run-status {border:0; padding:0; background:transparent;}
 #run-status .input-container {background:transparent !important;}
 #run-status textarea {background:transparent; border:0; padding:0; font-size:13px;
-  color:#6b7789; line-height:1.65; box-shadow:none;
+  color:#506078; line-height:1.65; box-shadow:none;
   background:transparent !important;}
 #export-panel {border:1px solid #dde3ec; border-radius:6px; background:#fff;}
 #provenance {padding:0; border:0; background:transparent;}
@@ -183,6 +183,11 @@ body, .gradio-container {background: #f7f8fa !important; color: #202b3b;}
 @media (max-width: 760px) {
  #setup-fields {flex-direction:column; gap:8px;}
  #setup-fields > div {width:100%; flex-basis:auto !important;}
+ #reading-toolbar {display:grid; grid-template-columns:repeat(2, minmax(0, 1fr));
+   align-items:start; gap:8px;}
+ #reading-toolbar > :has(#run-status), #reading-toolbar > #run-status {
+   grid-column:1 / -1; min-width:0 !important;}
+ #clear-action, #export-panel {width:100%; min-width:0 !important;}
  .workspace-header h1 {font-size:20px;}
  .reader .trace-columns {grid-template-columns:minmax(0, 1fr);}
  .reader .trace-review, .reader .trace-sources {max-height:none; padding:16px;}
@@ -1049,6 +1054,7 @@ def build_app(backend_python=None):
         gr.HTML(
             '<header class="workspace-header"><h1>文献综述工作台</h1></header>',
             elem_id="app-header",
+            padding=False,
         )
         with gr.Column(elem_id="input-panel"):
             with gr.Row(elem_id="setup-fields"):
@@ -1057,6 +1063,7 @@ def build_app(backend_python=None):
                         label="添加文献 · PDF",
                         file_types=[".pdf"],
                         file_count="multiple",
+                        height=128,
                     )
                     gr.Markdown(
                         "上传 1–10 篇文本 PDF，文件名不可重复。"
@@ -1079,7 +1086,7 @@ def build_app(backend_python=None):
                     show_label=False,
                     value="尚未加载结果",
                     interactive=False,
-                    lines=1,
+                    lines=2,
                     max_lines=5,
                     elem_id="run-status",
                     scale=5,
