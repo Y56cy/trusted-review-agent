@@ -37,6 +37,11 @@ UNKNOWN_SOURCE = "文献来源未知"
 REVIEW_NOTICE = "句级匹配仅提供证据支持与人工核查依据，不证明事实正确。"
 NOTICE = f"{REVIEW_NOTICE} NLI 概率不是事实准确率。"
 MATCH_LABELS = {"entailment": "支持", "neutral": "中立", "contradiction": "矛盾"}
+CORPUS_STATUS = {
+    True: ("corpus-verified", "✓ 已通过语料一致性校验"),
+    False: ("corpus-mismatch", "⚠ 与冻结语料不一致"),
+    None: ("corpus-unchecked", "未校验"),
+}
 DEMO_NOTICE = "演示数据：手工构造的界面样例，不是论文、真实生成结果或评测结果。"
 CHECK_NOTICE = (
     "基础自检不加载模型、不下载文件、不运行生成或正式评测；"
@@ -71,6 +76,9 @@ CSS = """
 .review-trace .evidence-badge {border-radius:5px; padding:2px 8px; font-size:13px;
   color:#314a70; background:#edf3ff; overflow-wrap:anywhere;}
 .review-trace .evidence-source {display:inline-block; font-weight:600;}
+.review-trace .corpus-verified {color:#126044; background:#e7f6ed;}
+.review-trace .corpus-mismatch {color:#8a4708; background:#fff0df;}
+.review-trace .corpus-unchecked {color:#48576b; background:#edf0f4;}
 .review-trace .trace-columns {
   display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px;
 }
@@ -265,16 +273,20 @@ def validate_result(value) -> dict:
             prob = evidence.get("nli_prob")
             if type(prob) not in (int, float) or not 0 <= prob <= 1 or not math.isfinite(prob):
                 raise ValueError(f"{field} nli_prob 必须是 0 到 1 之间的有限数值。")
-            checked.append(
-                {
-                    "source": _text(evidence.get("source", ""), f"{field} source"),
-                    "page": evidence["page"],
-                    "para_id": evidence["para_id"],
-                    "text": _text(evidence.get("text"), f"{field} text"),
-                    "nli_label": label,
-                    "nli_prob": float(prob),
-                }
-            )
+            canonical = {
+                "source": _text(evidence.get("source", ""), f"{field} source"),
+                "page": evidence["page"],
+                "para_id": evidence["para_id"],
+                "text": _text(evidence.get("text"), f"{field} text"),
+                "nli_label": label,
+                "nli_prob": float(prob),
+            }
+            if "corpus_verified" in evidence:
+                verified = evidence["corpus_verified"]
+                if verified is not None and type(verified) is not bool:
+                    raise ValueError(f"{field} corpus_verified 必须是布尔值或 null。")
+                canonical["corpus_verified"] = verified
+            checked.append(canonical)
         result["sentences"].append({"sentence": sentence, "evidences": checked})
     return result
 
@@ -373,53 +385,30 @@ def validate_frozen_corpus(payload) -> tuple[dict, str]:
     return index, checksum
 
 
-def check_corpus_evidence(corpus_path, result_path) -> str:
-    """Read-only integration check; no relevance judging, scoring, or review promotion."""
-    notice = (
-        "仅核对所选两个文件，不核验原 PDF、论文真实性、人工复核或综述正确性；"
-        "一致不代表相关性/NLI/正式评测通过。"
-    )
+def load_frozen_corpus(path) -> tuple[dict | None, str]:
+    """Replace this session's corpus with a validated index or clear its state."""
+    if not path:
+        return None, "未加载冻结语料。"
     try:
-        if not corpus_path or not result_path:
-            raise ValueError("请同时选择冻结语料 corpus.json 和 pipeline/导出结果 JSON。")
-        payload = _read_json(corpus_path)
-        index, checksum = validate_frozen_corpus(payload)
-        kind = _text(payload.get("dataset_type", "unverified"), "dataset_type")
-        result, metadata = load_result(result_path)
-        issues, total, matched, empty = [], 0, 0, 0
-        for i, sentence in enumerate(result["sentences"], 1):
-            if not sentence["evidences"]:
-                empty += 1
-            for j, evidence in enumerate(sentence["evidences"], 1):
-                total += 1
-                prefix = f"第 {i} 句第 {j} 条证据"
-                original = index.get((evidence["source"], evidence["para_id"]))
-                if not evidence["source"].strip():
-                    issues.append(f"{prefix}：缺少文献名，无法核对。")
-                elif original is None:
-                    issues.append(f"{prefix}：(source, para_id) 不在冻结语料中。")
-                else:
-                    different = [k for k in ("page", "text") if evidence[k] != original[k]]
-                    if different:
-                        issues.append(f"{prefix}：{'、'.join(different)} 与冻结语料不一致。")
-                    else:
-                        matched += 1
-        state = "发现不一致" if issues else ("证据字段一致" if total else "无证据可核对")
-        lines = [
-            f"核对结果：{state}。",
-            f"语料类型声明（未核验）：{kind}",
-            f"结果 SHA-256（规范化内容）：{_paragraph_checksum(result)}",
-            f"语料 SHA-256：{checksum}",
-            f"证据 {total} 条，一致 {matched} 条，不一致 {len(issues)} 条；无证据句 {empty} 句。",
-            *issues[:100],
-        ]
-        if len(issues) > 100:
-            lines.append(f"其余 {len(issues) - 100} 条问题未展开，请分批核查。")
-        if metadata["is_demo"] or kind in ("synthetic", "demo", "test"):
-            lines.append(DEMO_NOTICE)
-        return "\n".join([*lines, notice])
+        index, _ = validate_frozen_corpus(_read_json(path))
     except (ValueError, OSError) as exc:
-        return f"未完成核对：{exc}\n{notice}"
+        return None, f"冻结语料未加载：{exc}"
+    return index, f"已加载冻结语料（{len(index)} 段）。后续生成会自动核对证据。"
+
+
+def check_corpus_evidence(result: dict, corpus_index: dict | None) -> dict:
+    """Return a copy annotated by exact document, paragraph, page and text matches."""
+    checked = validate_result(result)
+    for sentence in checked["sentences"]:
+        for evidence in sentence["evidences"]:
+            verified = None
+            if corpus_index is not None:
+                original = corpus_index.get((evidence["source"], evidence["para_id"]))
+                verified = original is not None and all(
+                    evidence[key] == original[key] for key in ("page", "text")
+                )
+            evidence["corpus_verified"] = verified
+    return checked
 
 
 def _source_label(evidence: dict) -> str:
@@ -501,6 +490,7 @@ def render_provenance(result: dict, *, anchor_prefix: str = "", workspace: bool 
         for j, evidence in enumerate(item["evidences"], 1):
             label = evidence["nli_label"]
             match_detail = f"匹配关系：{MATCH_LABELS[label]}" if workspace else f"NLI 标签：{label}"
+            status_class, status_text = CORPUS_STATUS[evidence.get("corpus_verified")]
             parts.append(
                 f'<article id="{anchor_prefix}ev-{i}-{j}" class="trace-evidence" tabindex="0">'
                 '<div class="evidence-badge evidence-source">'
@@ -508,7 +498,8 @@ def render_provenance(result: dict, *, anchor_prefix: str = "", workspace: bool 
                 '<div class="evidence-badges">'
                 f'<span class="evidence-badge">第{evidence["page"]}页</span>'
                 f'<span class="evidence-badge">第{evidence["para_id"]}段</span>'
-                f'<span class="evidence-badge">匹配置信度 {evidence["nli_prob"]:.1%}</span></div>'
+                f'<span class="evidence-badge">匹配置信度 {evidence["nli_prob"]:.1%}</span>'
+                f'<span class="evidence-badge {status_class}">{status_text}</span></div>'
                 f'<p class="trace-text evidence-excerpt">{escape(evidence["text"])}</p>'
                 "<details><summary>查看匹配详情</summary>"
                 f'<p class="trace-meta">{match_detail}；'
@@ -632,8 +623,8 @@ def export_report(
         "",
         "## 逐句证据对照",
         "",
-        "| 句号 | 生成句 | 文献名 | 页码 / 段号 | 原文 | NLI 标签 / 模型概率 |",
-        "| --- | --- | --- | --- | --- | --- |",
+        "| 句号 | 生成句 | 文献名 | 页码 / 段号 | 原文 | NLI 标签 / 模型概率 | 语料一致性校验 |",
+        "| --- | --- | --- | --- | --- | --- | --- |",
     ]
     csv_file = folder / "evidence.csv"
     with csv_file.open("w", encoding="utf-8-sig", newline="") as stream:
@@ -650,16 +641,20 @@ def export_report(
                 "来源",
                 "说明",
                 "文献名",
+                "语料一致性校验",
             ]
         )
         for i, item in enumerate(result["sentences"], 1):
             evidences = item["evidences"] or [None]
             for evidence in evidences:
+                corpus_status = (
+                    CORPUS_STATUS[evidence.get("corpus_verified")][1] if evidence else ""
+                )
                 if evidence is None:
                     cells = [i, item["sentence"], "", "", "未匹配到证据，需人工核查", "", ""]
                     row = (
                         f"| {i} | {_markdown(item['sentence'])} | — | — | "
-                        "未匹配到证据，需人工核查 | — |"
+                        "未匹配到证据，需人工核查 | — | — |"
                     )
                 else:
                     cells = [
@@ -676,7 +671,7 @@ def export_report(
                         f"{_markdown(_source_label(evidence))} | "
                         f"{evidence['page']} / {evidence['para_id']} | "
                         f"{_markdown(evidence['text'])} | {evidence['nli_label']} / "
-                        f"{evidence['nli_prob']:.3f} |"
+                        f"{evidence['nli_prob']:.3f} | {corpus_status} |"
                     )
                 writer.writerow(
                     [
@@ -686,6 +681,7 @@ def export_report(
                             source_name,
                             warning,
                             _source_label(evidence) if evidence else "",
+                            corpus_status,
                         ]
                     ]
                 )
@@ -1002,19 +998,23 @@ def import_result(path):
         if not path:
             raise ValueError("请先选择 pipeline 结果 JSON。")
         result, metadata = load_result(path)
-        return _display(result, **metadata)
+        # Uploaded result files cannot attest to a check made in this session.
+        return _display(check_corpus_evidence(result, None), **metadata)
     except (ValueError, OSError) as exc:
         return _failed(exc)
 
 
 def show_demo():
-    return _display(DEMO_RESULT, "内置手工演示样例", is_demo=True)
+    return _display(check_corpus_evidence(DEMO_RESULT, None), "内置手工演示样例", is_demo=True)
 
 
-def generate_review(query, pdf_paths, top_k, nli_threshold, *, backend_python=None):
+def generate_review(
+    query, pdf_paths, top_k, nli_threshold, *, backend_python=None, corpus_index=None
+):
     yield _empty_display("正在生成综述并匹配证据，最多等待 10 分钟……")
     try:
         result = run_pipeline(query, pdf_paths, top_k, nli_threshold, backend_python=backend_python)
+        result = check_corpus_evidence(result, corpus_index)
         names = [Path(path).name for path in _normalize_pdf_paths(pdf_paths)]
         yield _display(result, f"本地生成 · {len(names)} 篇 PDF：" + "、".join(names))
     except ReviewBackendError as exc:
@@ -1108,12 +1108,23 @@ def build_app(backend_python=None):
             with gr.Accordion("结果导入", open=False):
                 imported = gr.File(label="综述结果 JSON（上限 5 MiB）", file_types=[".json"])
                 import_button = gr.Button("导入并展示")
-            with gr.Accordion("语料核对", open=False):
-                gr.Markdown("上传冻结语料及待核对的结果文件（各 ≤5 MiB）。")
-                corpus_file = gr.File(label="冻结语料 corpus.json", file_types=[".json"])
-                check_result_file = gr.File(label="待核对结果 JSON", file_types=[".json"])
-                corpus_button = gr.Button("核对证据与冻结语料")
-                corpus_status = gr.Textbox(label="核对结果", lines=10, interactive=False)
+            with gr.Accordion("冻结语料", open=False):
+                gr.Markdown(
+                    "可选。上传一份冻结语料后，当前会话后续生成的证据会自动核对"
+                    "文献名、页码、段号和原文片段。"
+                )
+                corpus_file = gr.File(
+                    label="冻结语料 corpus.json（上限 5 MiB）",
+                    file_types=[".json"],
+                    elem_id="corpus-file",
+                )
+                corpus_status = gr.Textbox(
+                    label="冻结语料状态",
+                    value="未加载冻结语料。",
+                    interactive=False,
+                    elem_id="corpus-status",
+                )
+                corpus_state = gr.State()
             with gr.Accordion("检索与匹配设置", open=False):
                 top_k = gr.Slider(1, 20, value=3, step=1, label="每句候选证据数")
                 threshold = gr.Slider(0, 1, value=0.7, step=0.05, label="最低匹配置信度")
@@ -1128,31 +1139,36 @@ def build_app(backend_python=None):
         outputs = [status, review, provenance, files, review_files]
         shared = {"outputs": outputs, "concurrency_id": "review-actions", "concurrency_limit": 1}
 
-        def generate(query, pdf, top_k, threshold):
-            yield from generate_review(query, pdf, top_k, threshold, backend_python=backend_python)
+        def generate(query, pdf, top_k, threshold, corpus_index):
+            yield from generate_review(
+                query,
+                pdf,
+                top_k,
+                threshold,
+                backend_python=backend_python,
+                corpus_index=corpus_index,
+            )
 
-        submit.click(generate, [query, pdf, top_k, threshold], api_name="generate_review", **shared)
+        submit.click(
+            generate,
+            [query, pdf, top_k, threshold, corpus_state],
+            api_name="generate_review",
+            **shared,
+        )
         import_button.click(import_result, [imported], api_name="import_result", **shared)
         demo_button.click(show_demo, api_name="show_demo", **shared)
         clear_button.click(
             lambda: _empty_display("已清空结果。"), api_name="clear_result", **shared
         )
 
-        corpus_button.click(
-            check_corpus_evidence,
-            [corpus_file, check_result_file],
-            [corpus_status],
-            api_name="check_corpus_evidence",
+        corpus_file.change(
+            load_frozen_corpus,
+            [corpus_file],
+            [corpus_state, corpus_status],
+            api_name="load_frozen_corpus",
             concurrency_id="review-actions",
             concurrency_limit=1,
         )
-        for input_file in (corpus_file, check_result_file):
-            input_file.change(
-                lambda: "输入已变化，请重新核对。",
-                outputs=[corpus_status],
-                concurrency_id="review-actions",
-                concurrency_limit=1,
-            )
         check_button.click(
             lambda: check_environment(backend_python),
             outputs=[diagnostics],

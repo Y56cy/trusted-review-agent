@@ -52,6 +52,7 @@ def main() -> None:
                 client = Client(url, verbose=False)
                 result = client.predict(api_name="/show_demo")
                 assert "手工构造" in result[0]
+                assert "未校验" in result[2]
                 assert len(result[3]) == 4
                 assert {Path(path).name for path in result[4]} == {"review.md", "review.docx"}
                 assert 'class="trace-columns"' in result[2]
@@ -103,21 +104,15 @@ def main() -> None:
                 }
                 corpus_path = Path(directory) / "corpus.json"
                 corpus_path.write_text(json.dumps(corpus), "utf-8")
-                checked = client.predict(
-                    handle_file(corpus_path),
-                    handle_file(result[3][2]),
-                    api_name="/check_corpus_evidence",
-                )
-                assert "证据字段一致" in checked and "synthetic" in checked
-                assert "手工构造" in checked and "不代表" in checked
+                checked = client.predict(handle_file(corpus_path), api_name="/load_frozen_corpus")
+                assert "已加载冻结语料" in checked and "2 段" in checked
                 corpus["paragraphs"][0]["text"] = "tampered"
                 corpus_path.write_text(json.dumps(corpus), "utf-8")
                 failed_check = client.predict(
-                    handle_file(corpus_path),
-                    handle_file(result[3][2]),
-                    api_name="/check_corpus_evidence",
+                    handle_file(corpus_path), api_name="/load_frozen_corpus"
                 )
-                assert "未完成核对" in failed_check and "校验值" in failed_check
+                assert "未加载" in failed_check and "校验值" in failed_check
+                assert "未加载" in client.predict(None, api_name="/load_frozen_corpus")
                 legacy = envelope["result"]
                 for sentence in legacy["sentences"]:
                     for evidence in sentence["evidences"]:
@@ -154,8 +149,8 @@ def main() -> None:
                 assert old_ids and new_ids and old_ids.isdisjoint(new_ids)
                 assert Path(repeated[3][2]) != Path(result[3][2])
                 print(
-                    "PASS: 本地 HTTP 服务、后端环境自检、四种下载、JSON 回导、"
-                    "多来源/旧格式回导、冻结语料核对/篡改拒绝、五文件上传、同名拦截、清空、失败状态、重复操作。"
+                    "PASS: 本地 HTTP 服务、后端环境自检、两类下载、JSON 回导、"
+                    "多来源/旧格式回导、冻结语料加载/篡改拒绝、五文件上传、同名拦截、清空、失败状态、重复操作。"
                 )
                 print("仅使用手工演示数据；未验证浏览器视觉效果、真实模型或正式评测。")
             finally:

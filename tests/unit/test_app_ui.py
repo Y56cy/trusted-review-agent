@@ -27,9 +27,12 @@ def test_demo_callback_is_explicitly_synthetic():
 
 def test_import_callback_and_failure_clear_previous_outputs(tmp_path):
     path = tmp_path / "raw.json"
-    path.write_text(json.dumps(app.DEMO_RESULT), "utf-8")
+    result = json.loads(json.dumps(app.DEMO_RESULT))
+    result["sentences"][0]["evidences"][0]["corpus_verified"] = True
+    path.write_text(json.dumps(result), "utf-8")
     success = app.import_result(path)
     assert "来源未核验" in success[0] and success[1]
+    assert "未校验" in success[2] and "✓ 已通过" not in success[2]
     assert app.import_result(None)[1:] == ("", "", None, None)
     path.write_text("{", "utf-8")
     assert app.import_result(path)[1:] == ("", "", None, None)
@@ -47,7 +50,20 @@ def test_generation_success_clears_then_displays(monkeypatch):
     assert len(updates) == 2
     assert updates[0][1:] == ("", "", None, None)
     assert updates[1][1] == app.DEMO_RESULT["review"]
+    assert "未校验" in updates[1][2]
     assert received["backend_python"] == "chosen"
+
+
+def test_generation_automatically_checks_each_evidence(monkeypatch):
+    monkeypatch.setattr(app, "run_pipeline", lambda *args, **kwargs: app.DEMO_RESULT)
+    example = app.DEMO_RESULT["sentences"][0]["evidences"][0]
+    index = {(example["source"], example["para_id"]): example}
+    *_, generated = app.generate_review("q", "paper.pdf", 3, 0.7, corpus_index=index)
+    assert "✓ 已通过语料一致性校验" in generated[2]
+    assert "⚠ 与冻结语料不一致" in generated[2]
+    envelope = json.loads(Path(generated[3][2]).read_text("utf-8"))
+    evidence = envelope["result"]["sentences"][0]["evidences"]
+    assert [item["corpus_verified"] for item in evidence] == [True, False]
 
 
 def test_generation_failure_clears_stale_outputs(monkeypatch):
@@ -85,15 +101,15 @@ def test_build_blocks_wires_callbacks_and_serializes_actions(monkeypatch):
         assert diagnostics.concurrency_limit == 1
         assert len(diagnostics.outputs) == 1
         assert diagnostics.outputs[0] not in functions["show_demo"].outputs
-        handoff = functions["check_corpus_evidence"]
-        assert len(handoff.inputs) == 2 and len(handoff.outputs) == 1
-        assert handoff.outputs[0].interactive is False
-        handoff_events = [fn for fn in demo.fns.values() if fn.outputs == handoff.outputs]
-        assert len(handoff_events) == 3
-        for event in handoff_events:
-            assert event.queue is True
-            assert event.concurrency_id == "review-actions"
-            assert event.concurrency_limit == 1
+        corpus = functions["load_frozen_corpus"]
+        assert len(corpus.inputs) == 1 and len(corpus.outputs) == 2
+        assert corpus.inputs[0].file_count == "single"
+        assert corpus.outputs[0] is functions["generate_review"].inputs[-1]
+        assert isinstance(corpus.outputs[0], gr.State)
+        assert corpus.outputs[1].interactive is False
+        assert corpus.queue is True
+        assert corpus.concurrency_id == "review-actions"
+        assert corpus.concurrency_limit == 1
         selected = []
         monkeypatch.setattr(
             app, "check_environment", lambda python: selected.append(python) or "自检结果"
@@ -140,7 +156,7 @@ def test_advanced_tools_are_folded_away_from_main_flow():
             if child["id"] == advanced["id"]
         )
         labels = {components[child["id"]]["props"].get("label") for child in children}
-        assert {"证据溯源报告", "结果导入", "检索与匹配设置", "生成环境自检"} <= labels
+        assert {"证据溯源报告", "结果导入", "冻结语料", "检索与匹配设置", "生成环境自检"} <= labels
         assert any(
             item["props"].get("label") == "下载综述"
             and item["id"] not in {child["id"] for child in children}
