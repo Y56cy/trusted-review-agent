@@ -11,11 +11,11 @@
 
 ## 新成员上手（先看这里）
 
-1. 看 `docs/分工.md` —— 知道自己负责哪个模块、该改哪个文件
-2. 看 `docs/执行方案.md` —— 了解分几个阶段、每个阶段交付什么
-3. 看 `docs/中期冲刺计划.md` —— 知道中期检查前要先做什么
+1. 看 `docs/进展规划.md` —— 项目方向（中期 → 结题）
+2. 看 `docs/结题执行评估方案.md` —— 结题阶段要做什么、怎么验收
+3. 看 `docs/执行方案.md` —— 阶段划分与功能清单
 
-代码入口是 `src/pipeline.py`，一条命令跑通全链路。团队进度以这三份文档的 checkbox 为准。
+代码入口是 `src/pipeline.py`，一条命令跑通全链路。团队进度以《结题执行评估方案》的 checkbox 为准。中期过程文档已归档到 `docs/归档/`。
 
 ## 目录结构
 
@@ -52,7 +52,7 @@
 pip install -r requirements.txt
 # 该文件已用 -r 引用 requirements-retrieval.txt 和 requirements-ui.txt，一条命令装齐全部依赖。
 
-成员 A 的检索模式、独立测试、示例对照与真实论文补验步骤见 [成员 A 检索开发说明](docs/成员A检索开发说明.md) 和 [成员 A 验收记录](docs/成员A验收记录.md)。示例评测不代表真实论文表现。
+成员 A 的检索模式、独立测试、示例对照与真实论文补验步骤见 [成员 A 检索开发说明](docs/归档/成员A检索开发说明.md) 和 [成员 A 验收记录](docs/归档/成员A验收记录.md)。示例评测不代表真实论文表现。
 
 ## 模型下载
 - BGE 向量模型：通过 ModelScope 下载 `BAAI/bge-small-zh-v1.5` 到 `models/bge-small-zh-v1.5`
@@ -85,29 +85,34 @@ python src/app.py
 
 生成前可运行 `python src/app.py --check --backend-python /绝对路径/核心环境/bin/python` 检查环境。加 `--json` 可输出交接用自检报告；自检不加载模型，通过也不代表真实联调已完成。
 
-详见 [成员 B 开发与使用说明](docs/成员B开发说明.md) 和 [成员 B 验收记录](docs/成员B验收记录.md)。
+详见 [成员 B 开发与使用说明](docs/归档/成员B开发说明.md) 和 [成员 B 验收记录](docs/归档/成员B验收记录.md)。
 
 
 ## 当前进度
 
-- [x] 本地大模型推理跑通（llama.cpp + Qwen2.5-7B）
+- [x] 本地大模型推理跑通（llama.cpp + Qwen2.5-7B，GPU 加速）
 - [x] BGE 向量检索跑通
 - [x] PDF 解析 + 清洗（108 段，带页码和 para_id）
 - [x] 模块化拆分（parser / retriever / generator / match）
 - [x] NLI 环境跑通（Erlangshen-110M，标签顺序确认）
 - [x] 句级证据匹配接入 pipeline（端到端原型跑通）
 - [x] BM25 / BGE RRF 混合检索 + 检索评测工具（组员 A）
-- [x] Gradio 界面（单篇，组员 B）
-- [x] **多篇文献库**（加 `source` 字段 + 5 篇 RAG 主题文献，D1–D2 完成）
-- [ ] 左右对照 UI（本次冲刺 D3）
-- [ ] 真实文献评测 + 人工标注（本次冲刺 D4–D5）
-- [ ] 评价指标（公式待定，结题做）
+- [x] 多篇文献库（加 `source` 字段 + 5 篇 RAG 主题文献，443 段）
+- [x] 左右对照 UI + 四格式导出（组员 B）
+- [x] **生成-校验-重写闭环**（主动防幻觉：无证据句自动改写 / 显式标「未能溯源」）
+- [x] **两智能体综述扩写**（可溯源关键句 → 结构化综述）
+- [x] **引用标注**（`[N]` 上标 + 参考文献表，贯穿展示与导出）
+- [ ] 真实文献评测 P/R/MRR（待 20 条查询定稿）
+- [ ] 评价指标 `compute_metrics`（可追溯度，公式待定）
+- [ ] PDF 原页坐标高亮（结题迭代项）
 
 ## 已知问题
 
 1. ✅ 英文段落混入检索结果（已解决）：检索侧已加中文占比过滤，阈值 0.3。
-2. **NLI 跨语言不可靠**：Erlangshen 是纯中文 NLI 模型，对"英文证据 + 中文生成句"判断不准（实测 S2 语义高度对应却判 neutral）。
-3. **PDF 解析警告**：`startxref on same line as offset`、`Multiple definitions in dictionary`，不影响提取。
+2. **NLI 跨语言不可靠**：Erlangshen 是纯中文 NLI 模型，对"英文证据 + 中文生成句"判断不准。
+3. **综合/总结句难以溯源**：综述里"总结/综合"性质的句子（往往是主题句）天然难锚定单条证据，导致部分查询未能溯源率偏高；已交由综述扩写的引言/过渡/总结承担。
+4. **长段落超 BGE 512 token 截断**：段末证据可能漏召回、Recall 偏低，评测时如实说明。
+5. **PDF 解析警告**：`startxref on same line as offset`、`Multiple definitions in dictionary`，不影响提取。
 
 ## 已确定的决策（不得推翻）
 
