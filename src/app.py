@@ -119,7 +119,7 @@ footer {display:none !important;}
   background:#fff; border:1px solid #dde3ec; border-radius:10px;}
 #input-panel button, #output-panel button {box-shadow: none; border-radius:6px;}
 #input-panel .block, #output-panel .block {box-shadow: none;}
-#utility-actions {gap:8px;}
+#utility-actions {gap:8px; flex-grow:0 !important;}
 #utility-actions button {width:100%; min-width:0 !important;}
 #demo-action, #clear-action {background:transparent; color:#506078; border:1px solid #dde3ec;}
 #demo-action {font-size:14px;}
