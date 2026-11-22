@@ -1,7 +1,9 @@
 """Synthetic contract checks for member A's ce04a5e corpus export."""
 
 import copy
+import csv
 import json
+from pathlib import Path
 
 import pytest
 
@@ -93,46 +95,69 @@ def test_snapshot_tampering(corpus):
         app.validate_frozen_corpus(corpus)
 
 
-def test_check_good_empty_and_bad_results(tmp_path, corpus):
-    c = write(tmp_path / "corpus.json", corpus)
-    r = write(tmp_path / "result.json", app.DEMO_RESULT)
-    text = app.check_corpus_evidence(c, r)
-    assert "证据字段一致" in text and "一致 2 条" in text and "无证据句 1" in text
-    assert "不代表" in text
-    assert "synthetic" in text and app.DEMO_NOTICE in text
+def test_check_good_empty_and_bad_results(corpus):
+    index, _ = app.validate_frozen_corpus(corpus)
     result = copy.deepcopy(app.DEMO_RESULT)
-    result["sentences"][0]["evidences"] = []
-    write(r, result)
-    assert "无证据可核对" in app.check_corpus_evidence(c, r)
-    result = copy.deepcopy(app.DEMO_RESULT)
-    result["sentences"][0]["evidences"][0]["page"] = 99
-    result["sentences"][0]["evidences"][1]["text"] = "changed"
-    write(r, result)
-    text = app.check_corpus_evidence(c, r)
-    assert "不一致 2 条" in text and "page" in text and "text" in text
+    checked = app.check_corpus_evidence(result, index)
+    assert checked["sentences"][1]["evidences"] == []
+    assert [e["corpus_verified"] for e in checked["sentences"][0]["evidences"]] == [True, True]
+    assert result == app.DEMO_RESULT
+    evidence = result["sentences"][0]["evidences"]
+    evidence[0]["page"] = 99
+    evidence[1]["text"] = "changed"
+    checked = app.check_corpus_evidence(result, index)
+    assert [e["corpus_verified"] for e in checked["sentences"][0]["evidences"]] == [False, False]
 
 
-@pytest.mark.parametrize("source,expected", [("", "缺少文献名"), ("unknown", "不在冻结语料")])
-def test_unknown_source_not_inferred(tmp_path, corpus, source, expected):
+@pytest.mark.parametrize("source", ["", "unknown"])
+def test_unknown_source_not_inferred(corpus, source):
+    index, _ = app.validate_frozen_corpus(corpus)
     result = copy.deepcopy(app.DEMO_RESULT)
     result["sentences"][0]["evidences"][0]["source"] = source
-    text = app.check_corpus_evidence(
-        write(tmp_path / "c.json", corpus), write(tmp_path / "r.json", result)
-    )
-    assert expected in text
+    checked = app.check_corpus_evidence(result, index)
+    assert checked["sentences"][0]["evidences"][0]["corpus_verified"] is False
 
 
-def test_envelope_demo_is_retained(tmp_path, corpus):
-    files = app.export_report(app.DEMO_RESULT, source_name="synthetic", is_demo=True)
-    text = app.check_corpus_evidence(write(tmp_path / "c.json", corpus), files[2])
-    assert app.DEMO_NOTICE in text
+@pytest.mark.parametrize("value", [0, 1, "false", {}])
+def test_corpus_status_does_not_coerce_invalid_values(value):
+    result = copy.deepcopy(app.DEMO_RESULT)
+    result["sentences"][0]["evidences"][0]["corpus_verified"] = value
+    with pytest.raises(ValueError, match="corpus_verified"):
+        app.validate_result(result)
 
 
-def test_bad_input_clears_previous_check(tmp_path, corpus):
-    c = write(tmp_path / "c.json", corpus)
+def test_load_frozen_corpus_replaces_or_clears_previous_state(tmp_path, corpus):
+    valid = write(tmp_path / "corpus.json", corpus)
+    index, status = app.load_frozen_corpus(valid)
+    assert len(index) == 2 and "已加载冻结语料" in status
+    assert app.load_frozen_corpus(None) == (None, "未加载冻结语料。")
+
+    corpus["paragraphs"][0]["text"] = "tampered"
+    assert app.load_frozen_corpus(write(valid, corpus))[0] is None
     bad = tmp_path / "bad.json"
     bad.write_text("{", encoding="utf-8")
-    assert "未完成核对" in app.check_corpus_evidence(c, bad)
-    assert "未完成核对" in app.check_corpus_evidence(None, None)
+    state, status = app.load_frozen_corpus(bad)
+    assert state is None and "未加载" in status
     bad.write_bytes(b" " * (app.MAX_JSON_BYTES + 1))
-    assert "5 MiB" in app.check_corpus_evidence(c, bad)
+    state, status = app.load_frozen_corpus(bad)
+    assert state is None and "5 MiB" in status
+
+
+def test_verification_status_is_preserved_in_all_reports(tmp_path, corpus):
+    index, _ = app.validate_frozen_corpus(corpus)
+    result = copy.deepcopy(app.DEMO_RESULT)
+    evidence = result["sentences"][0]["evidences"]
+    evidence[1]["page"] = 99
+    annotated = app.check_corpus_evidence(result, index)
+    unchecked = app.check_corpus_evidence(result, None)["sentences"][0]["evidences"][0]
+    annotated["sentences"][0]["evidences"].append(unchecked)
+    md, csv_path, json_path, html_path = map(Path, app.export_report(annotated, tmp_path))
+    assert app.load_result(json_path)[0] == annotated
+    with csv_path.open(encoding="utf-8-sig", newline="") as stream:
+        rows = list(csv.DictReader(stream))
+    for row, value in zip(rows[:-1], [True, False, None], strict=True):
+        text = app.CORPUS_STATUS[value][1]
+        assert row["语料一致性校验"] == text
+        assert text in md.read_text("utf-8")
+        assert text in html_path.read_text("utf-8")
+    assert rows[-1]["语料一致性校验"] == ""

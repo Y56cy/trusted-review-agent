@@ -1,7 +1,7 @@
 """Member B's local UI: consume the existing pipeline without changing its contract.
 
-Offline imports, rendering and exports use only the standard library. Gradio is
-loaded only by build_app(); model code runs in a separate, time-bounded process.
+Gradio and Word export dependencies are loaded only when used. Model code runs
+in a separate, time-bounded process.
 """
 
 from __future__ import annotations
@@ -34,7 +34,13 @@ MAX_PDF_BYTES = 50 * 1024 * 1024
 MAX_PDF_FILES = 10
 MAX_TOTAL_PDF_BYTES = 200 * 1024 * 1024
 UNKNOWN_SOURCE = "文献来源未知"
-NOTICE = "句级匹配仅提供证据支持与人工核查依据，不证明事实正确；NLI 概率不是事实准确率。"
+NOTICE = "句级匹配仅提供证据支持与人工核查依据，不证明事实正确。 NLI 概率不是事实准确率。"
+MATCH_LABELS = {"entailment": "支持", "neutral": "中立", "contradiction": "矛盾"}
+CORPUS_STATUS = {
+    True: ("corpus-verified", "✓ 已通过语料一致性校验"),
+    False: ("corpus-mismatch", "⚠ 与冻结语料不一致"),
+    None: ("corpus-unchecked", "未校验"),
+}
 DEMO_NOTICE = "演示数据：手工构造的界面样例，不是论文、真实生成结果或评测结果。"
 CHECK_NOTICE = (
     "基础自检不加载模型、不下载文件、不运行生成或正式评测；"
@@ -65,6 +71,13 @@ CSS = """
 .review-trace .trace-text {white-space: pre-wrap;}
 .review-trace a {color: #1d4ed8; text-decoration: underline;}
 .review-trace .trace-meta {font-size: 0.9em;}
+.review-trace .evidence-badges {display:flex; flex-wrap:wrap; gap:6px; margin:8px 0 14px;}
+.review-trace .evidence-badge {border-radius:5px; padding:2px 8px; font-size:13px;
+  color:#314a70; background:#edf3ff; overflow-wrap:anywhere;}
+.review-trace .evidence-source {display:inline-block; font-weight:600;}
+.review-trace .corpus-verified {color:#126044; background:#e7f6ed;}
+.review-trace .corpus-mismatch {color:#8a4708; background:#fff0df;}
+.review-trace .corpus-unchecked {color:#48576b; background:#edf0f4;}
 .review-trace .trace-columns {
   display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px;
 }
@@ -89,53 +102,64 @@ CSS = """
 """
 # App shell styles stay out of standalone report exports.
 UI_CSS = """
-.gradio-container {max-width: 1440px !important; margin: auto !important;
-  padding: 0 clamp(14px, 3vw, 40px) !important;
+.gradio-container {width:100% !important; max-width:none !important; margin:0 !important;
+  padding:0 clamp(12px, 2.5vw, 40px) !important;
   font-family: "Inter", "Noto Sans SC", "Microsoft YaHei", sans-serif !important;}
 .gradio-container > main {padding:12px 0 !important;}
 body, .gradio-container {background: #f7f8fa !important; color: #202b3b;}
-.workspace-header {display:flex; align-items:center; justify-content:space-between;
-  gap:20px; padding:24px 0; border-bottom:1px solid #e1e5ec;}
-.workspace-header h1 {font-size:21px; letter-spacing:-.6px; font-weight:700;
+footer {display:none !important;}
+.workspace-header {padding:14px 0; border-bottom:1px solid #e1e5ec;}
+.workspace-header h1 {font-size:24px; font-weight:700;
   margin:0; color:#17243c;}
-.workspace-header h1 span {font-size:12px; font-weight:400; letter-spacing:0;
-  color:#788393; margin-left:22px; border-left:1px solid #d8dfe8; padding-left:22px;}
-.workspace-header p {font-size:11px; color:#788393; margin:0;}
-#app-header, #workspace-footer {padding:0; border:0; background:transparent;}
-#workspace-row {gap:16px;}
-#input-panel {padding:0; gap:14px;}
-#setup-panel {background:#fff; border:1px solid #dde3ec; border-radius:10px;}
-#setup-panel > .label-wrap {padding:8px 12px;}
-#input-panel .tab-container button {font-size:13px; padding:12px 20px;}
-#input-panel .tab-container button.selected {color:#205ac1; border-color:#205ac1;}
-#input-panel .form {background:#fff;}
+#app-header {padding:0; border:0; background:transparent;}
+#workspace-layout {--workspace-height:max(400px, calc(100dvh - 114px));
+  display:grid; grid-template-columns:clamp(268px, 22vw, 328px) minmax(0, 1fr);
+  align-items:start; gap:clamp(14px, 1.6vw, 24px);}
+#input-panel {min-width:0 !important; padding:18px; gap:14px;
+  background:#fff; border:1px solid #dde3ec; border-radius:10px;}
 #input-panel button, #output-panel button {box-shadow: none; border-radius:6px;}
-#input-panel .upload-container {min-height:150px !important;}
 #input-panel .block, #output-panel .block {box-shadow: none;}
-#setup-fields {gap:24px;}
-#setup-fields > div {min-width:0 !important;}
-#utility-actions {gap:12px; margin:4px 0 0;}
-#utility-actions button {flex:0 1 auto; min-width:140px; font-size:12px; font-weight:500;}
+#utility-actions {gap:8px; flex-grow:0 !important;}
+#utility-actions button {width:100%; min-width:0 !important;}
 #demo-action, #clear-action {background:transparent; color:#506078; border:1px solid #dde3ec;}
-#clear-action {white-space:nowrap; min-width:96px !important; font-size:12px;}
+#demo-action {font-size:14px;}
+#advanced-panel {padding:8px 10px;}
+#clear-action {white-space:nowrap; min-width:84px !important; font-size:13px;}
 #run-status label {background:transparent !important; border:0 !important;}
-#output-panel {padding:0; min-width:0 !important; gap:12px;}
-#reading-toolbar {align-items:center; gap:16px; padding:0;}
+#output-panel {--reader-pane-height:var(--workspace-height);
+  padding:0; min-width:0 !important; gap:8px;}
+#output-panel:has(#provenance .reader) {
+  --reader-pane-height:max(400px, calc(var(--workspace-height) - 100px));
+}
+#reading-toolbar {display:grid; grid-template-columns:minmax(0, 1fr) auto;
+  gap:8px; align-items:center;}
+#reading-toolbar > :has(> #run-status) {min-width:0 !important;}
+#result-actions {display:grid; grid-template-columns:140px 140px 84px; align-items:start; gap:8px;}
+#result-actions:has(.label-wrap.open) {grid-column:1 / -1;
+  grid-template-columns:repeat(2, minmax(0, 1fr)) 84px;}
+#workspace-layout:not(:has(#provenance .reader)) :is(#result-actions, #report-panel),
+#provenance:not(:has(.reader)),
+#output-panel:has(#provenance .reader) #empty-reader {display:none !important;}
+#reading-toolbar:has(#run-status textarea:placeholder-shown) {
+  display:none;
+}
 #run-status {border:0; padding:0; background:transparent;}
 #run-status .input-container {background:transparent !important;}
-#run-status textarea {background:transparent; border:0; padding:0; font-size:11px;
-  color:#6b7789; line-height:1.65; box-shadow:none;
-  background:transparent !important;}
-#export-panel {border:1px solid #dde3ec; border-radius:6px; background:#fff;}
-#provenance {padding:0; border:0; background:transparent;}
+#run-status textarea {border:0; padding:8px 10px; min-height:40px; font-size:13px; color:#506078;
+  line-height:1.65; box-shadow:none; background:#f7f8fa !important;}
+#export-panel, #original-review-panel {border:1px solid #dde3ec; border-radius:6px;
+  background:#fff; width:100%; min-width:0 !important;}
+#provenance, #empty-reader {padding:0; border:0; background:transparent;}
 .reader {background:#fff; border:1px solid #e1e6ed; border-radius:10px; overflow:hidden;}
 .reader .reader-bar {display:flex; align-items:center; justify-content:space-between;
   padding:15px 24px; border-bottom:1px solid #e6eaf0; font-size:11px; color:#778296;}
 .reader .reader-bar strong {color:#3d4f68; font-weight:500;}
-.reader .trace-columns {grid-template-columns:minmax(0, 1.8fr) minmax(290px, 1fr); gap:0;}
-.reader .trace-review {padding:36px 42px 44px; max-height:78vh;}
-.reader .trace-sources {padding:28px; border-left:1px solid #e6eaf0; background:#fcfdff;
-  max-height:78vh;}
+.reader .trace-columns {grid-template-columns:minmax(0, 2fr) minmax(0, 3fr);
+  gap:0; min-height:var(--reader-pane-height);}
+.reader .trace-review, .reader .trace-sources {padding:clamp(16px, 2vw, 28px);
+  max-height:var(--reader-pane-height);}
+.reader .trace-review {font-size:16px; line-height:1.7;}
+.reader .trace-sources {border-left:1px solid #e6eaf0; background:#fcfdff;}
 .reader h2.reader-title {font-size:26px; letter-spacing:-.5px; line-height:1.5;
   font-weight:650; margin:0 0 14px; color:#17243c;}
 .reader .reader-eyebrow {color:#3469bc; font-size:11px; letter-spacing:1px; margin:0 0 12px;}
@@ -144,7 +168,7 @@ body, .gradio-container {background: #f7f8fa !important; color: #202b3b;}
 .reader .trace-sentence {border:0; border-radius:5px; padding:10px 12px;
   margin:0 -12px 13px; background:transparent; position:relative;}
 .reader .trace-sentence > strong {font-size:10px; color:#9aa5b5; display:block; margin-bottom:3px;}
-.reader .trace-sentence-link {font-size:16px; line-height:1.95; color:#26364c;
+.reader .trace-sentence-link {font-size:16px; line-height:1.7; color:#26364c;
   text-decoration:none; padding:0;}
 .reader .trace-sentence-link:hover {color:#205ac1;}
 .reader .trace-sentence:has(a:hover), .reader .trace-sentence:focus-within {background:#f0f5ff;}
@@ -158,8 +182,7 @@ body, .gradio-container {background: #f7f8fa !important; color: #202b3b;}
   padding:20px 0; margin:0; background:transparent;}
 .reader .trace-evidence:target {background:#f5f8ff !important; color:#26364c !important;
   border:0; border-top:2px solid #4275c8; padding:18px 10px; scroll-margin-top:20px;}
-.reader .evidence-source {font-size:15px; font-weight:600; line-height:1.7; color:#26364c;}
-.reader .evidence-location {font-size:11px; color:#6b7c91; margin:8px 0 18px;}
+.reader .evidence-source {font-size:15px; line-height:1.7; color:#26364c;}
 .reader .trace-text {overflow-wrap:anywhere;}
 .reader .evidence-excerpt {font-size:14px; line-height:1.95; border-left:2px solid #c8d5ea;
   padding-left:14px; margin:0 0 16px; color:#40506a;}
@@ -170,70 +193,82 @@ body, .gradio-container {background: #f7f8fa !important; color: #202b3b;}
   margin-top:30px; color:#8792a2; font-size:11px; line-height:1.8;}
 .reader:not(:has(:target)) .trace-evidence-group:not(:first-of-type) {display:none;}
 .reader:has(.reader-all:target) .trace-evidence-group {display:block;}
-.empty-workspace {padding:48px 36px; background:#fff; border:1px solid #e1e6ed;
-  border-radius:10px; color:#7b8797;}
-.empty-workspace h3 {font-size:22px; font-weight:550; color:#26364c; margin:0 0 12px;}
-.empty-workspace p {font-size:13px; line-height:1.9; margin:0;}
-#boundary p, #model-note p, #upload-note p {font-size:11px; line-height:1.7; color:#7b8797;}
-#workspace-footer {font-size:10px; color:#98a2af; padding:16px 0 24px;}
-@media (max-width: 900px) {
- .gradio-container {padding:0 18px !important;}
- .reader .trace-review {padding:28px;}
- .reader .trace-columns {grid-template-columns:minmax(0, 1.5fr) minmax(260px, 1fr);}
- .reader .trace-sources {padding:22px;}
+.reader-empty h2 {font-size:16px; font-weight:600; color:#23334c; margin:0 0 14px;}
+.reader-empty p {font-size:14px; line-height:1.7; color:#506078; margin:0;}
+#review-full textarea {font-size:16px; line-height:1.7;}
+@media (min-width: 981px) {
+ #input-panel {min-height:var(--workspace-height);}
+ #input-panel > :has(> #research-question) {flex:1 1 auto !important;}
+ #research-question, #research-question > label, #research-question .input-container {
+   display:flex; flex-direction:column; flex:1 1 auto; min-height:0;
+ }
+ #research-question textarea {flex:1 1 auto; min-height:100px;}
+ #pdf-upload button[aria-dropeffect="copy"]:not(.icon-mode) {
+   height:clamp(128px, 23dvh, 260px) !important;
+ }
+}
+@media (max-width: 980px) {
+ #workspace-layout {grid-template-columns:minmax(0, 1fr);}
+ #output-panel, #output-panel:has(#provenance .reader) {--reader-pane-height:auto;}
 }
 @media (max-width: 760px) {
- #workspace-row {flex-direction: column !important;}
- #setup-fields {flex-direction:column;}
- #setup-fields > div {width:100%; flex-basis:auto !important;}
- .workspace-header {padding:20px 0;}
- .workspace-header h1 {font-size:19px;}
- .workspace-header h1 span {display:block; border:0; margin:5px 0 0; padding:0; font-size:11px;}
- .workspace-header p {display:none;}
+ .workspace-header h1 {font-size:20px;}
+ #reading-toolbar {grid-template-columns:minmax(0, 1fr);}
+ #result-actions, #result-actions:has(.label-wrap.open) {
+   grid-template-columns:repeat(2, minmax(0, 1fr)) 84px;
+ }
+ #result-actions > :is(#export-panel, #original-review-panel):has(.label-wrap.open) {
+   grid-column:1 / -1;
+ }
  .reader .trace-columns {grid-template-columns:minmax(0, 1fr);}
- .reader .trace-review, .reader .trace-sources {max-height:none; padding:24px;}
+ .reader .trace-review, .reader .trace-sources {max-height:none; padding:16px;}
  .reader .trace-sources {border-left:0; border-top:1px solid #e6eaf0;}
+ .reader-empty .trace-sources {min-height:80px;}
  .reader h2.reader-title {font-size:22px;}
- .reader .trace-sentence-link {font-size:15px;}
  .reader .reader-bar {padding:12px 18px; gap:12px;}
 }
 """
 EMPTY_WORKSPACE = (
-    '<div class="empty-workspace"><h3>让每一句综述，都有据可查。</h3>'
-    "<p>添加文献与研究问题，开始生成。已有结果可以直接导入。<br>"
-    "也可选择「加载演示样例」，先体验正文与证据的联动阅读。</p></div>"
+    '<section class="review-trace reader reader-empty" aria-label="综述与引用证据">'
+    '<div class="trace-columns"><div class="trace-review"><h2>综述</h2>'
+    "<p>添加文献并输入研究问题，或加载演示样例。</p></div>"
+    '<div class="trace-sources"><h2>引用证据</h2></div></div></section>'
 )
 
 DEMO_RESULT = {
-    "query": "【演示】如何查看逐句证据？",
-    "review": "这是一句用于展示溯源交互的示例。另一句示例暂时没有匹配证据。",
+    "query": "【演示】延长开放时间对图书馆使用有什么影响？",
+    "review": "延长开放时间后，图书馆晚间到访增加。现有材料还无法判断周末到访是否也有变化。",
     "sentences": [
         {
-            "sentence": "这是一句用于展示溯源交互的示例。",
+            "sentence": "延长开放时间后，图书馆晚间到访增加。",
             "evidences": [
                 {
                     "page": 1,
                     "para_id": 1,
-                    "source": "演示文献甲（手工构造）",
-                    "text": "【手工构造的演示原文】点击证据标记后，这个原文片段会被定位并高亮。",
+                    "source": "演示文献甲 · 开放时间调整记录",
+                    "text": "闭馆时间延后一小时后，工作日晚间的入馆人数较调整前有所增加。",
                     "nli_label": "entailment",
                     "nli_prob": 0.85,
                 },
                 {
                     "page": 2,
                     "para_id": 1,
-                    "source": "演示文献乙（手工构造）",
-                    "text": "【第二篇手工构造原文】段号同为 1，但文献名不同，不能合并为同一证据。",
+                    "source": "演示文献乙 · 读者使用情况调查",
+                    "text": "部分受访读者表示，闭馆时间延后后，他们更常在晚间到馆阅读或自习。",
                     "nli_label": "entailment",
                     "nli_prob": 0.78,
                 },
             ],
         },
-        {"sentence": "另一句示例暂时没有匹配证据。", "evidences": []},
+        {"sentence": "现有材料还无法判断周末到访是否也有变化。", "evidences": []},
     ],
 }
 _EXPORT_DIR: tempfile.TemporaryDirectory | None = None
 _EXPORT_LOCK = threading.Lock()
+
+
+class ReviewBackendError(ValueError):
+    """The local generation process could not complete."""
 
 
 def _text(value, field: str) -> str:
@@ -277,16 +312,20 @@ def validate_result(value) -> dict:
             prob = evidence.get("nli_prob")
             if type(prob) not in (int, float) or not 0 <= prob <= 1 or not math.isfinite(prob):
                 raise ValueError(f"{field} nli_prob 必须是 0 到 1 之间的有限数值。")
-            checked.append(
-                {
-                    "source": _text(evidence.get("source", ""), f"{field} source"),
-                    "page": evidence["page"],
-                    "para_id": evidence["para_id"],
-                    "text": _text(evidence.get("text"), f"{field} text"),
-                    "nli_label": label,
-                    "nli_prob": float(prob),
-                }
-            )
+            canonical = {
+                "source": _text(evidence.get("source", ""), f"{field} source"),
+                "page": evidence["page"],
+                "para_id": evidence["para_id"],
+                "text": _text(evidence.get("text"), f"{field} text"),
+                "nli_label": label,
+                "nli_prob": float(prob),
+            }
+            if "corpus_verified" in evidence:
+                verified = evidence["corpus_verified"]
+                if verified is not None and type(verified) is not bool:
+                    raise ValueError(f"{field} corpus_verified 必须是布尔值或 null。")
+                canonical["corpus_verified"] = verified
+            checked.append(canonical)
         result["sentences"].append({"sentence": sentence, "evidences": checked})
     return result
 
@@ -385,53 +424,30 @@ def validate_frozen_corpus(payload) -> tuple[dict, str]:
     return index, checksum
 
 
-def check_corpus_evidence(corpus_path, result_path) -> str:
-    """Read-only integration check; no relevance judging, scoring, or review promotion."""
-    notice = (
-        "仅核对所选两个文件，不核验原 PDF、论文真实性、人工复核或综述正确性；"
-        "一致不代表相关性/NLI/正式评测通过。"
-    )
+def load_frozen_corpus(path) -> tuple[dict | None, str]:
+    """Replace this session's corpus with a validated index or clear its state."""
+    if not path:
+        return None, "未加载冻结语料。"
     try:
-        if not corpus_path or not result_path:
-            raise ValueError("请同时选择冻结语料 corpus.json 和 pipeline/导出结果 JSON。")
-        payload = _read_json(corpus_path)
-        index, checksum = validate_frozen_corpus(payload)
-        kind = _text(payload.get("dataset_type", "unverified"), "dataset_type")
-        result, metadata = load_result(result_path)
-        issues, total, matched, empty = [], 0, 0, 0
-        for i, sentence in enumerate(result["sentences"], 1):
-            if not sentence["evidences"]:
-                empty += 1
-            for j, evidence in enumerate(sentence["evidences"], 1):
-                total += 1
-                prefix = f"第 {i} 句第 {j} 条证据"
-                original = index.get((evidence["source"], evidence["para_id"]))
-                if not evidence["source"].strip():
-                    issues.append(f"{prefix}：缺少文献名，无法核对。")
-                elif original is None:
-                    issues.append(f"{prefix}：(source, para_id) 不在冻结语料中。")
-                else:
-                    different = [k for k in ("page", "text") if evidence[k] != original[k]]
-                    if different:
-                        issues.append(f"{prefix}：{'、'.join(different)} 与冻结语料不一致。")
-                    else:
-                        matched += 1
-        state = "发现不一致" if issues else ("证据字段一致" if total else "无证据可核对")
-        lines = [
-            f"核对结果：{state}。",
-            f"语料类型声明（未核验）：{kind}",
-            f"结果 SHA-256（规范化内容）：{_paragraph_checksum(result)}",
-            f"语料 SHA-256：{checksum}",
-            f"证据 {total} 条，一致 {matched} 条，不一致 {len(issues)} 条；无证据句 {empty} 句。",
-            *issues[:100],
-        ]
-        if len(issues) > 100:
-            lines.append(f"其余 {len(issues) - 100} 条问题未展开，请分批核查。")
-        if metadata["is_demo"] or kind in ("synthetic", "demo", "test"):
-            lines.append(DEMO_NOTICE)
-        return "\n".join([*lines, notice])
+        index, _ = validate_frozen_corpus(_read_json(path))
     except (ValueError, OSError) as exc:
-        return f"未完成核对：{exc}\n{notice}"
+        return None, f"冻结语料未加载：{exc}"
+    return index, f"已加载冻结语料（{len(index)} 段）。后续生成会自动核对证据。"
+
+
+def check_corpus_evidence(result: dict, corpus_index: dict | None) -> dict:
+    """Return a copy annotated by exact document, paragraph, page and text matches."""
+    checked = validate_result(result)
+    for sentence in checked["sentences"]:
+        for evidence in sentence["evidences"]:
+            verified = None
+            if corpus_index is not None:
+                original = corpus_index.get((evidence["source"], evidence["para_id"]))
+                verified = original is not None and all(
+                    evidence[key] == original[key] for key in ("page", "text")
+                )
+            evidence["corpus_verified"] = verified
+    return checked
 
 
 def _source_label(evidence: dict) -> str:
@@ -511,15 +527,25 @@ def render_provenance(result: dict, *, anchor_prefix: str = "", workspace: bool 
         if not item["evidences"]:
             parts.append('<p class="trace-warning">未匹配到证据，需人工核查。</p>')
         for j, evidence in enumerate(item["evidences"], 1):
+            label = evidence["nli_label"]
+            match_detail = (
+                f"匹配关系：{MATCH_LABELS[label]}"
+                if workspace
+                else f"NLI 标签：{label}；模型概率：{evidence['nli_prob']:.3f}"
+            )
+            status_class, status_text = CORPUS_STATUS[evidence.get("corpus_verified")]
             parts.append(
                 f'<article id="{anchor_prefix}ev-{i}-{j}" class="trace-evidence" tabindex="0">'
-                f'<div class="evidence-source">{escape(_source_label(evidence))}</div>'
-                f'<p class="evidence-location">句 {i} · 证据 {j} · '
-                f"第{evidence['page']}页 第{evidence['para_id']}段</p>"
+                '<div class="evidence-badge evidence-source">'
+                f"{escape(_source_label(evidence))}</div>"
+                '<div class="evidence-badges">'
+                f'<span class="evidence-badge">第{evidence["page"]}页</span>'
+                f'<span class="evidence-badge">第{evidence["para_id"]}段</span>'
+                f'<span class="evidence-badge">匹配置信度 {evidence["nli_prob"]:.1%}</span>'
+                f'<span class="evidence-badge {status_class}">{status_text}</span></div>'
                 f'<p class="trace-text evidence-excerpt">{escape(evidence["text"])}</p>'
                 "<details><summary>查看匹配详情</summary>"
-                f'<p class="trace-meta">NLI 标签：{escape(evidence["nli_label"])}；'
-                f"模型概率：{evidence['nli_prob']:.3f}</p></details></article>"
+                f'<p class="trace-meta">{match_detail}</p></details></article>'
             )
         parts.append("</section>")
     parts.append("</div></div></section>")
@@ -542,6 +568,62 @@ def _csv_cell(text: str) -> str:
     return text
 
 
+def _new_export_folder(output_dir: str | Path | None, prefix: str) -> Path:
+    global _EXPORT_DIR
+    if output_dir is None:
+        with _EXPORT_LOCK:
+            if _EXPORT_DIR is None:
+                _EXPORT_DIR = tempfile.TemporaryDirectory(prefix="trusted-review-ui-")
+            output_dir = _EXPORT_DIR.name
+    Path(output_dir).mkdir(parents=True, exist_ok=True)
+    return Path(tempfile.mkdtemp(prefix=prefix, dir=output_dir))
+
+
+def export_review(
+    result: dict, output_dir: str | Path | None = None, *, is_demo: bool = False
+) -> list[str]:
+    """Export the full review independently of evidence reports."""
+    from docx import Document
+    from docx.oxml.ns import qn
+    from docx.shared import Pt
+
+    query = _text(result["query"], "query")
+    review = _text(result["review"], "review").replace("\r\n", "\n").replace("\r", "\n")
+    paragraphs = review.split("\n\n")
+    folder = _new_export_folder(output_dir, "review-")
+    md_file = folder / "review.md"
+    sections = ["# 文献综述"]
+    if is_demo:
+        sections.append(f"> {DEMO_NOTICE}")
+    sections.extend(["## 研究问题", _markdown(query), "## 综述正文"])
+    sections.extend(_markdown(paragraph) for paragraph in paragraphs)
+    md_file.write_text("\n\n".join(sections) + "\n", "utf-8")
+
+    document = Document()
+    document.core_properties.title = "文献综述"
+    for style_name in ("Normal", "Title", "Heading 1"):
+        style = document.styles[style_name]
+        style.font.name = "Microsoft YaHei"
+        style.element.get_or_add_rPr().rFonts.set(qn("w:eastAsia"), "Microsoft YaHei")
+    normal = document.styles["Normal"]
+    normal.font.size = Pt(12)
+    normal.paragraph_format.line_spacing = 1.7
+    normal.paragraph_format.space_after = Pt(8)
+    # Word XML cannot represent some control characters accepted in JSON text.
+    invalid_xml = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\ud800-\udfff\ufffe\uffff]")
+    document.add_heading("文献综述", level=0)
+    if is_demo:
+        document.add_paragraph(DEMO_NOTICE)
+    document.add_heading("研究问题", level=1)
+    document.add_paragraph(invalid_xml.sub("\ufffd", query))
+    document.add_heading("综述正文", level=1)
+    for paragraph in paragraphs:
+        document.add_paragraph(invalid_xml.sub("\ufffd", paragraph))
+    docx_file = folder / "review.docx"
+    document.save(docx_file)
+    return [str(md_file), str(docx_file)]
+
+
 def export_report(
     result: dict,
     output_dir: str | Path | None = None,
@@ -550,18 +632,11 @@ def export_report(
     is_demo: bool = False,
 ) -> list[str]:
     """Create unique per-request reports; user strings never become paths or HTML."""
-    global _EXPORT_DIR
     result = validate_result(result)
     source_name = _text(source_name, "source_name")
     if type(is_demo) is not bool:
         raise ValueError("is_demo 必须是布尔值。")
-    if output_dir is None:
-        with _EXPORT_LOCK:
-            if _EXPORT_DIR is None:
-                _EXPORT_DIR = tempfile.TemporaryDirectory(prefix="trusted-review-ui-")
-            output_dir = _EXPORT_DIR.name
-    Path(output_dir).mkdir(parents=True, exist_ok=True)
-    folder = Path(tempfile.mkdtemp(prefix="report-", dir=output_dir))
+    folder = _new_export_folder(output_dir, "report-")
     metadata = {
         "source_name": source_name,
         "is_demo": is_demo,
@@ -590,8 +665,8 @@ def export_report(
         "",
         "## 逐句证据对照",
         "",
-        "| 句号 | 生成句 | 文献名 | 页码 / 段号 | 原文 | NLI 标签 / 模型概率 |",
-        "| --- | --- | --- | --- | --- | --- |",
+        "| 句号 | 生成句 | 文献名 | 页码 / 段号 | 原文 | NLI 标签 / 模型概率 | 语料一致性校验 |",
+        "| --- | --- | --- | --- | --- | --- | --- |",
     ]
     csv_file = folder / "evidence.csv"
     with csv_file.open("w", encoding="utf-8-sig", newline="") as stream:
@@ -608,16 +683,20 @@ def export_report(
                 "来源",
                 "说明",
                 "文献名",
+                "语料一致性校验",
             ]
         )
         for i, item in enumerate(result["sentences"], 1):
             evidences = item["evidences"] or [None]
             for evidence in evidences:
+                corpus_status = (
+                    CORPUS_STATUS[evidence.get("corpus_verified")][1] if evidence else ""
+                )
                 if evidence is None:
                     cells = [i, item["sentence"], "", "", "未匹配到证据，需人工核查", "", ""]
                     row = (
                         f"| {i} | {_markdown(item['sentence'])} | — | — | "
-                        "未匹配到证据，需人工核查 | — |"
+                        "未匹配到证据，需人工核查 | — | — |"
                     )
                 else:
                     cells = [
@@ -634,7 +713,7 @@ def export_report(
                         f"{_markdown(_source_label(evidence))} | "
                         f"{evidence['page']} / {evidence['para_id']} | "
                         f"{_markdown(evidence['text'])} | {evidence['nli_label']} / "
-                        f"{evidence['nli_prob']:.3f} |"
+                        f"{evidence['nli_prob']:.3f} | {corpus_status} |"
                     )
                 writer.writerow(
                     [
@@ -644,6 +723,7 @@ def export_report(
                             source_name,
                             warning,
                             _source_label(evidence) if evidence else "",
+                            corpus_status,
                         ]
                     ]
                 )
@@ -899,14 +979,14 @@ def run_pipeline(
                 env=_offline_environment(),
             )
         except subprocess.TimeoutExpired as exc:
-            raise ValueError(
+            raise ReviewBackendError(
                 f"生成超过 {timeout} 秒，已停止本次任务；请检查本地模型服务。"
             ) from exc
         except OSError as exc:
-            raise ValueError("无法启动核心 Python；请检查 --backend-python 路径。") from exc
+            raise ReviewBackendError("无法启动核心 Python；请检查 --backend-python 路径。") from exc
         if completed.returncode:
             reason = completed.stderr.strip()[-3000:] or "核心进程未返回结果。"
-            raise ValueError(f"生成未完成：{reason}")
+            raise ReviewBackendError(f"生成未完成：{reason}")
         return load_result(result_file)[0]
 
 
@@ -933,43 +1013,49 @@ def _display(result: dict, source_name: str, is_demo: bool = False) -> tuple:
     result = validate_result(result)
     sentence_count = len(result["sentences"])
     matched_count = sum(bool(item["evidences"]) for item in result["sentences"])
-    status = (
-        f"{source_name} · "
-        f"共 {sentence_count} 句，其中 {matched_count} 句返回证据，"
-        f"{sentence_count - matched_count} 句未返回证据。这里只统计结果数量，不是正式评测。"
-    )
-    if is_demo:
-        status = DEMO_NOTICE + "\n" + status
+    status = f"{source_name} · {sentence_count} 句综述，{matched_count} 句有对应证据"
     files = export_report(result, source_name=source_name, is_demo=is_demo)
+    review_files = export_review(result, is_demo=is_demo)
     rendered = render_workspace(result, anchor_prefix=f"run-{secrets.token_hex(8)}-")
-    return status, result["review"], rendered, files
+    return status, result["review"], rendered, files, review_files
+
+
+def _empty_display(status: str) -> tuple:
+    return status, "", "", None, None
 
 
 def _failed(exc: Exception) -> tuple:
     # Clear all old outputs on failure, so an older report cannot look like this run's result.
-    return f"未完成：{exc}", "", "", None
+    return _empty_display(f"未完成：{exc}")
 
 
 def import_result(path):
     try:
         if not path:
-            raise ValueError("请先选择 pipeline 结果 JSON。")
+            raise ValueError("请先选择要导入的综述文件。")
         result, metadata = load_result(path)
-        return _display(result, **metadata)
+        # Uploaded result files cannot attest to a check made in this session.
+        return _display(check_corpus_evidence(result, None), **metadata)
     except (ValueError, OSError) as exc:
         return _failed(exc)
 
 
 def show_demo():
-    return _display(DEMO_RESULT, "内置手工演示样例", is_demo=True)
+    return _display(check_corpus_evidence(DEMO_RESULT, None), "演示样例", is_demo=True)
 
 
-def generate_review(query, pdf_paths, top_k, nli_threshold, *, backend_python=None):
-    yield "正在运行本地 pipeline，最长等待 10 分钟……", "", "", None
+def generate_review(
+    query, pdf_paths, top_k, nli_threshold, *, backend_python=None, corpus_index=None
+):
+    yield _empty_display("正在生成综述……")
     try:
         result = run_pipeline(query, pdf_paths, top_k, nli_threshold, backend_python=backend_python)
+        result = check_corpus_evidence(result, corpus_index)
         names = [Path(path).name for path in _normalize_pdf_paths(pdf_paths)]
         yield _display(result, f"本地生成 · {len(names)} 篇 PDF：" + "、".join(names))
+    except ReviewBackendError as exc:
+        print(exc, file=sys.stderr)
+        yield _empty_display("暂时无法生成综述，请稍后重试。也可以先加载演示样例。")
     except (ValueError, OSError) as exc:
         yield _failed(exc)
 
@@ -997,140 +1083,123 @@ def build_app(backend_python=None):
         delete_cache=(3600, 86400),
     ) as demo:
         gr.HTML(
-            '<header class="workspace-header"><h1>Trusted Review'
-            "<span>文献综述工作台</span></h1><p>从研究问题，到可核查的证据</p></header>",
+            '<header class="workspace-header"><h1>文献综述工作台</h1></header>',
             elem_id="app-header",
+            padding=False,
         )
-        with gr.Row(elem_id="workspace-row"):
-            with gr.Column(elem_id="input-panel"):
-                with gr.Accordion(
-                    "资料与工具 · 新建综述 / 导入 / 核对", open=True, elem_id="setup-panel"
-                ) as setup:
-                    with gr.Tab("文献生成", elem_id="source-tabs"):
-                        with gr.Row(elem_id="setup-fields"):
-                            with gr.Column(scale=1, min_width=260):
-                                pdf = gr.File(
-                                    label="添加文献 · PDF",
-                                    file_types=[".pdf"],
-                                    file_count="multiple",
-                                )
-                                gr.Markdown(
-                                    "1–10 篇文本 PDF，每篇 ≤50 MiB，总计 ≤200 MiB；"
-                                    "文件名须互不重复。",
-                                    elem_id="upload-note",
-                                )
-                            with gr.Column(scale=1, min_width=260):
-                                query = gr.Textbox(
-                                    label="研究问题",
-                                    lines=4,
-                                    placeholder="你希望从这些文献中了解什么？",
-                                )
-                        with gr.Accordion("检索与匹配参数", open=False):
-                            top_k = gr.Slider(
-                                1, 20, value=3, step=1, label="每句候选证据数量 top_k"
-                            )
-                            threshold = gr.Slider(0, 1, value=0.7, step=0.05, label="NLI 匹配阈值")
-                        submit = gr.Button("生成综述并匹配证据", variant="primary")
-                        gr.Markdown(
-                            "需要已配置的本地 BGE / NLI / llama-server。"
-                            "缺少模型时使用下方离线导入或演示；不会自动下载模型。",
-                            elem_id="model-note",
+        with gr.Row(elem_id="workspace-layout"):
+            with gr.Column(elem_id="input-panel", min_width=0):
+                pdf = gr.File(
+                    label="添加文献 · PDF",
+                    file_types=[".pdf"],
+                    file_count="multiple",
+                    height=128,
+                    elem_id="pdf-upload",
+                )
+                query = gr.Textbox(
+                    label="研究问题",
+                    lines=4,
+                    placeholder="你希望从这些文献中了解什么？",
+                    elem_id="research-question",
+                )
+                with gr.Column(elem_id="utility-actions"):
+                    submit = gr.Button("生成综述", variant="primary")
+                    demo_button = gr.Button("加载演示样例", elem_id="demo-action")
+                with gr.Accordion("高级", open=False, elem_id="advanced-panel"):
+                    with gr.Accordion("证据溯源报告", open=False, elem_id="report-panel"):
+                        files = gr.File(
+                            label="Markdown / CSV / JSON / HTML",
+                            file_count="multiple",
+                            interactive=False,
                         )
-                        with gr.Accordion("真实生成环境自检（不运行模型）", open=False):
-                            check_button = gr.Button("检查核心 Python 与本地模型前置条件")
-                            diagnostics = gr.Textbox(
-                                label="自检结果（不代表真实联调通过）", interactive=False, lines=8
-                            )
-                    with gr.Tab("结果导入"):
-                        imported = gr.File(
-                            label="pipeline 结果 JSON（最大 5 MiB）", file_types=[".json"]
-                        )
+                    with gr.Accordion("结果导入", open=False):
+                        imported = gr.File(label="综述结果文件（JSON）", file_types=[".json"])
                         import_button = gr.Button("导入并展示")
-                    with gr.Tab("语料核对"):
-                        gr.Markdown(
-                            "分别上传成员 A 导出的冻结语料和待核对结果（各 ≤5 MiB）。"
-                            "按文献名+段号检查页码及原文，不加载模型、不改标签、不计算效果分数。"
+                    with gr.Accordion("冻结语料", open=False):
+                        gr.Markdown("上传后，生成综述时会自动核对引用证据。")
+                        corpus_file = gr.File(
+                            label="冻结语料文件（JSON）",
+                            file_types=[".json"],
+                            elem_id="corpus-file",
                         )
-                        corpus_file = gr.File(label="冻结语料 corpus.json", file_types=[".json"])
-                        check_result_file = gr.File(label="待核对结果 JSON", file_types=[".json"])
-                        corpus_button = gr.Button("核对证据与冻结语料")
                         corpus_status = gr.Textbox(
-                            label="两个所选文件的核对结果", lines=10, interactive=False
+                            label="冻结语料状态",
+                            value="未加载冻结语料。",
+                            interactive=False,
+                            elem_id="corpus-status",
                         )
-                    demo_button = gr.Button("加载演示样例（非真实结果）", elem_id="demo-action")
-        with gr.Column(elem_id="output-panel"):
-            with gr.Row(elem_id="reading-toolbar"):
-                status = gr.Textbox(
-                    label="运行状态与来源",
-                    show_label=False,
-                    value="尚未加载结果",
-                    interactive=False,
-                    lines=2,
-                    max_lines=5,
-                    elem_id="run-status",
-                    scale=5,
-                )
-                clear_button = gr.Button("清空结果", elem_id="clear-action", scale=0, min_width=80)
-                with gr.Accordion("导出报告", open=False, elem_id="export-panel"):
-                    files = gr.File(label="Markdown / CSV / JSON / HTML", file_count="multiple")
-            provenance = gr.HTML(
-                value=EMPTY_WORKSPACE, label="逐句证据溯源", padding=False, elem_id="provenance"
-            )
-            with gr.Accordion("原始综述全文", open=False, elem_id="original-review-panel"):
-                review = gr.Textbox(
-                    label="原始综述全文（完整保留）",
-                    interactive=False,
-                    lines=5,
-                    elem_id="review-full",
-                )
-        gr.Markdown(f"{NOTICE} 高亮仅定位返回的文本片段，不是 PDF 原页。", elem_id="boundary")
-        gr.HTML("Trusted Review · 本地文献研究 · 请结合原文独立复核", elem_id="workspace-footer")
-        outputs = [status, review, provenance, files]
+                        corpus_state = gr.State()
+                    with gr.Accordion("检索与匹配设置", open=False):
+                        top_k = gr.Slider(1, 20, value=3, step=1, label="每句候选证据数")
+                        threshold = gr.Slider(0, 1, value=0.7, step=0.05, label="最低匹配置信度")
+            with gr.Column(elem_id="output-panel", min_width=0):
+                with gr.Column(elem_id="reading-toolbar", min_width=0):
+                    status = gr.Textbox(
+                        label="运行状态与来源",
+                        show_label=False,
+                        placeholder=" ",
+                        interactive=False,
+                        lines=1,
+                        max_lines=5,
+                        elem_id="run-status",
+                    )
+                    with gr.Row(elem_id="result-actions"):
+                        with gr.Accordion("下载综述", open=False, elem_id="export-panel"):
+                            review_files = gr.File(
+                                label="Markdown / Word", file_count="multiple", interactive=False
+                            )
+                        with gr.Accordion("综述全文", open=False, elem_id="original-review-panel"):
+                            review = gr.Textbox(
+                                label="综述全文",
+                                interactive=False,
+                                lines=5,
+                                show_copy_button=True,
+                                elem_id="review-full",
+                            )
+                        clear_button = gr.Button(
+                            "清空结果", elem_id="clear-action", scale=0, min_width=84
+                        )
+                gr.HTML(value=EMPTY_WORKSPACE, padding=False, elem_id="empty-reader")
+                provenance = gr.HTML(label="逐句证据溯源", padding=False, elem_id="provenance")
+        outputs = [status, review, provenance, files, review_files]
         shared = {"outputs": outputs, "concurrency_id": "review-actions", "concurrency_limit": 1}
 
-        def generate(query, pdf, top_k, threshold):
-            yield from generate_review(query, pdf, top_k, threshold, backend_python=backend_python)
-
-        def settle_workspace(rendered):
-            return gr.update(open=not bool(rendered))
-
-        for event in (
-            submit.click(
-                generate, [query, pdf, top_k, threshold], api_name="generate_review", **shared
-            ),
-            import_button.click(import_result, [imported], api_name="import_result", **shared),
-            demo_button.click(show_demo, api_name="show_demo", **shared),
-            clear_button.click(
-                lambda: ("已清空结果。", "", "", None), api_name="clear_result", **shared
-            ),
-        ):
-            event.then(
-                settle_workspace,
-                [provenance],
-                [setup],
-                api_name=False,
-                concurrency_id="review-actions",
-                concurrency_limit=1,
+        def generate(query, pdf, top_k, threshold, corpus_index):
+            yield from generate_review(
+                query,
+                pdf,
+                top_k,
+                threshold,
+                backend_python=backend_python,
+                corpus_index=corpus_index,
             )
 
-        corpus_button.click(
-            check_corpus_evidence,
-            [corpus_file, check_result_file],
-            [corpus_status],
-            api_name="check_corpus_evidence",
+        submit.click(
+            generate,
+            [query, pdf, top_k, threshold, corpus_state],
+            api_name="generate_review",
+            **shared,
+        )
+        import_button.click(import_result, [imported], api_name="import_result", **shared)
+        demo_button.click(show_demo, api_name="show_demo", **shared)
+        clear_button.click(
+            lambda: _empty_display("已清空结果。"), api_name="clear_result", **shared
+        )
+
+        corpus_file.change(
+            load_frozen_corpus,
+            [corpus_file],
+            [corpus_state, corpus_status],
+            api_name="load_frozen_corpus",
             concurrency_id="review-actions",
             concurrency_limit=1,
         )
-        for input_file in (corpus_file, check_result_file):
-            input_file.change(
-                lambda: "输入已变化，请重新核对。",
-                outputs=[corpus_status],
-                concurrency_id="review-actions",
-                concurrency_limit=1,
-            )
-        check_button.click(
-            lambda: check_environment(backend_python),
-            outputs=[diagnostics],
+
+        def diagnose() -> str:
+            return check_environment(backend_python)
+
+        gr.api(
+            diagnose,
             api_name="check_environment",
             concurrency_id="review-actions",
             concurrency_limit=1,
