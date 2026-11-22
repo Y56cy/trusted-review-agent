@@ -304,7 +304,11 @@ def test_upstream_pipeline_five_pdf_contract_without_models(tmp_path, monkeypatc
     stubs = {
         "parser": SimpleNamespace(parse_pdf=parse_pdf),
         "retriever": SimpleNamespace(Retriever=Retriever),
-        "generator": SimpleNamespace(generate=generate),
+        "generator": SimpleNamespace(
+            generate=generate,
+            rewrite_sentence=lambda sentence, candidates: "[未能溯源]",
+            UNSUPPORTED="[未能溯源]",
+        ),
         "match": SimpleNamespace(
             split_sentences=lambda text: [text], match_sentence=match_sentence
         ),

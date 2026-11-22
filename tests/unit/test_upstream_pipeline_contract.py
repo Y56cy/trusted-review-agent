@@ -15,7 +15,7 @@ import app
 
 @pytest.fixture
 def pipeline(monkeypatch):
-    seen = {"paths": [], "prompts": [], "matches": []}
+    seen = {"paths": [], "prompts": [], "matches": [], "rewrites": []}
 
     def parse_pdf(path):
         seen["paths"].append(path)
@@ -28,9 +28,15 @@ def pipeline(monkeypatch):
         def search(self, query, top_k):
             return self.paragraphs[:top_k]
 
+    UNSUPPORTED = "[未能溯源]"
+
     def generate(prompt):
         seen["prompts"].append(prompt)
         return "合成生成句。"
+
+    def rewrite_sentence(sentence, candidates):
+        seen["rewrites"].append((sentence, len(candidates)))
+        return UNSUPPORTED
 
     def match_sentence(sentence, candidates, threshold):
         seen["matches"].append((sentence, threshold))
@@ -39,7 +45,11 @@ def pipeline(monkeypatch):
     modules = {
         "parser": {"parse_pdf": parse_pdf},
         "retriever": {"Retriever": Retriever},
-        "generator": {"generate": generate},
+        "generator": {
+            "generate": generate,
+            "rewrite_sentence": rewrite_sentence,
+            "UNSUPPORTED": UNSUPPORTED,
+        },
         "match": {"split_sentences": lambda text: [text], "match_sentence": match_sentence},
     }
     for name, functions in modules.items():

@@ -124,7 +124,7 @@ def test_workspace_has_guidance_and_responsive_shell_without_export_css(tmp_path
     assert "#output-panel" not in app.CSS
     paths = app.export_report(app.DEMO_RESULT, is_demo=True)
     exported = next(p for p in paths if str(p).endswith(".html"))
-    assert "#output-panel" not in Path(exported).read_text()
+    assert "#output-panel" not in Path(exported).read_text(encoding="utf-8")
 
 
 def test_editorial_shell_keeps_measured_tabs_consistent():
