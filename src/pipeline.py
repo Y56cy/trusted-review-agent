@@ -171,6 +171,41 @@ def expand_review(result):
     return {"query": result["query"], "review": review, "sentences": sentences}
 
 
+def annotate_citations(result):
+    """给综述加引用标注：[N] 上标（HTML 层渲染），末尾附参考文献。
+
+    编号按证据 (source, para_id) 首次出现的顺序；同一证据被多句引用时用同一号。
+    这里产出纯文本 [N] 标记 + references 列表；上标渲染（[N] → <sup>[N]</sup>）
+    由前端/导出的 HTML 层做，纯文本导出（CSV 等）保留 [N]。
+    """
+    sentences = result["sentences"]
+
+    ref_index = {}
+    references = []
+    for item in sentences:
+        for ev in item["evidences"]:
+            key = (ev["source"], ev["para_id"])
+            if key not in ref_index:
+                ref_index[key] = len(references) + 1
+                references.append(ev)
+
+    annotated = []
+    for item in sentences:
+        sent = item["sentence"]
+        nums = [ref_index[(ev["source"], ev["para_id"])] for ev in item["evidences"]]
+        if nums:
+            core = sent.rstrip("。！？!?")
+            tail = sent[len(core):]
+            sent = core + "".join(f"[{n}]" for n in nums) + tail
+        annotated.append(sent)
+
+    reference_list = [
+        f"[{i}]《{ref['source']}》第{ref['page']}页 第{ref['para_id']}段：{ref['text'][:80]}"
+        for i, ref in enumerate(references, 1)
+    ]
+    return {**result, "review": "".join(annotated), "references": reference_list}
+
+
 def _append_trace(trace, kind, original, rewritten=None):
     """可选地记录一条改写轨迹；trace 为 None 时不做任何事（前端调用不传 trace）。"""
     if trace is None:
@@ -218,6 +253,10 @@ def _print_result(result, trace=None):
             print(f"   → 证据: 《{ev.get('source', '')}》 第{ev['page']}页 第{ev['para_id']}段 "
                   f"({ev['nli_label']}, {ev['nli_prob']:.2f})")
             print(f"     原文: {ev['text'][:80]}...")
+    if result.get("references"):
+        print("\n【参考文献】")
+        for ref in result["references"]:
+            print(f"  {ref}")
 
 
 if __name__ == "__main__":
@@ -239,6 +278,11 @@ if __name__ == "__main__":
     print("=" * 60)
     expanded = expand_review(result)
     _print_result(expanded)
+
+    print("\n" + "=" * 60)
+    print("【引用标注后的综述】")
+    print("=" * 60)
+    _print_result(annotate_citations(expanded))
 
 #     按触发概率从高到低：
 

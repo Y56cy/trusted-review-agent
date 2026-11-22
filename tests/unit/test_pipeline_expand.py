@@ -121,3 +121,34 @@ def test_expand_review_missing_placeholder_appends_key(monkeypatch):
     assert expanded["sentences"][-1]["sentence"] == "关键句二。"
     assert expanded["sentences"][-1]["structural"] is False
     assert expanded["sentences"][-1]["evidences"][0]["para_id"] == 2
+
+
+def test_annotate_citations_adds_markers_and_references(monkeypatch):
+    module = _make_pipeline(monkeypatch, generate=lambda prompt: "", split_sentences=_split)
+
+    result = {
+        "query": "问题",
+        "review": "句一。句二。句三。",
+        "sentences": [
+            {
+                "sentence": "句一。",
+                "evidences": [{"source": "论文A", "para_id": 1, "page": 2, "text": "证据甲"}],
+            },
+            {
+                "sentence": "句二。",
+                "evidences": [
+                    {"source": "论文A", "para_id": 1, "page": 2, "text": "证据甲"},
+                    {"source": "论文B", "para_id": 3, "page": 5, "text": "证据乙"},
+                ],
+            },
+            {"sentence": "句三。", "evidences": []},
+        ],
+    }
+
+    annotated = module.annotate_citations(result)
+
+    assert annotated["review"] == "句一[1]。句二[1][2]。句三。"
+    assert annotated["references"] == [
+        "[1]《论文A》第2页 第1段：证据甲",
+        "[2]《论文B》第5页 第3段：证据乙",
+    ]
