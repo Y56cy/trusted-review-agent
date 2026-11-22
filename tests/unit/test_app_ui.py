@@ -16,11 +16,11 @@ def isolated_exports(tmp_path, monkeypatch):
 
 
 def test_demo_callback_is_explicitly_synthetic():
-    status, review, rendered, paths, review_paths = app.show_demo()
+    status, review, references, rendered, paths, review_paths = app.show_demo()
     assert status.startswith("演示样例")
     assert "正式评测" not in status
     assert "模型概率" not in rendered
-    assert review == app.DEMO_RESULT["review"]
+    assert app.DEMO_RESULT["review"] in review
     assert re.search(r'id="run-[0-9a-f]+-ev-1-1"', rendered)
     assert all(Path(path).is_file() for path in [*paths, *review_paths])
     assert json.loads(Path(paths[2]).read_text("utf-8"))["metadata"]["is_demo"] is True
@@ -33,10 +33,10 @@ def test_import_callback_and_failure_clear_previous_outputs(tmp_path):
     path.write_text(json.dumps(result), "utf-8")
     success = app.import_result(path)
     assert "来源未核验" in success[0] and success[1]
-    assert "未校验" in success[2] and "✓ 已通过" not in success[2]
-    assert app.import_result(None)[1:] == ("", "", None, None)
+    assert "未校验" in success[3] and "✓ 已通过" not in success[3]
+    assert app.import_result(None)[1:] == ("", "", "", None, None)
     path.write_text("{", "utf-8")
-    assert app.import_result(path)[1:] == ("", "", None, None)
+    assert app.import_result(path)[1:] == ("", "", "", None, None)
 
 
 def test_generation_success_clears_then_displays(monkeypatch):
@@ -49,9 +49,9 @@ def test_generation_success_clears_then_displays(monkeypatch):
     monkeypatch.setattr(app, "run_pipeline", run)
     updates = list(app.generate_review("q", "paper.pdf", 3, 0.7, backend_python="chosen"))
     assert len(updates) == 2
-    assert updates[0][1:] == ("", "", None, None)
-    assert updates[1][1] == app.DEMO_RESULT["review"]
-    assert "未校验" in updates[1][2]
+    assert updates[0][1:] == ("", "", "", None, None)
+    assert app.DEMO_RESULT["review"] in updates[1][1]
+    assert "未校验" in updates[1][3]
     assert received["backend_python"] == "chosen"
 
 
@@ -60,9 +60,9 @@ def test_generation_automatically_checks_each_evidence(monkeypatch):
     example = app.DEMO_RESULT["sentences"][0]["evidences"][0]
     index = {(example["source"], example["para_id"]): example}
     *_, generated = app.generate_review("q", "paper.pdf", 3, 0.7, corpus_index=index)
-    assert "✓ 已通过语料一致性校验" in generated[2]
-    assert "⚠ 与冻结语料不一致" in generated[2]
-    envelope = json.loads(Path(generated[3][2]).read_text("utf-8"))
+    assert "✓ 已通过语料一致性校验" in generated[3]
+    assert "⚠ 与冻结语料不一致" in generated[3]
+    envelope = json.loads(Path(generated[4][2]).read_text("utf-8"))
     evidence = envelope["result"]["sentences"][0]["evidences"]
     assert [item["corpus_verified"] for item in evidence] == [True, False]
 
@@ -76,7 +76,7 @@ def test_generation_failure_clears_stale_outputs(monkeypatch):
     monkeypatch.setattr(app, "run_pipeline", fail)
     updates = list(app.generate_review("q", "paper.pdf", 3, 0.7))
     assert len(updates) == 2
-    assert all(update[1:] == ("", "", None, None) for update in updates)
+    assert all(update[1:] == ("", "", "", None, None) for update in updates)
     assert "后端不可用" in updates[-1][0]
 
 
@@ -93,9 +93,9 @@ def test_build_blocks_wires_callbacks_and_serializes_actions(monkeypatch):
         for name in names:
             assert functions[name].concurrency_id == "review-actions"
             assert functions[name].concurrency_limit == 1
-            assert len(functions[name].outputs) == 5
+            assert len(functions[name].outputs) == 6
         assert functions["generate_review"].inputs[1].file_count == "multiple"
-        assert functions["clear_result"].fn()[1:] == ("", "", None, None)
+        assert functions["clear_result"].fn()[1:] == ("", "", "", None, None)
         assert functions["show_demo"].fn()[0].startswith("演示样例")
         diagnostics = functions["check_environment"]
         assert diagnostics.concurrency_id == "review-actions"
@@ -122,8 +122,8 @@ def test_build_blocks_wires_callbacks_and_serializes_actions(monkeypatch):
 
 
 def test_reloading_result_does_not_reuse_previous_selection_anchor():
-    first = app.show_demo()[2]
-    second = app.show_demo()[2]
+    first = app.show_demo()[3]
+    second = app.show_demo()[3]
     first_ids = set(re.findall(r'id="([^"]+)"', first))
     second_ids = set(re.findall(r'id="([^"]+)"', second))
     assert first_ids and second_ids and first_ids.isdisjoint(second_ids)
@@ -217,20 +217,14 @@ def test_partial_sentence_result_keeps_complete_review_accessible():
         "sentences": [{"sentence": "已匹配的正文。", "evidences": []}],
     }
     outputs = app._display(result, "测试导入")
-    assert outputs[1] == result["review"]
+    assert result["review"] in outputs[1]
     demo = app.build_app()
     try:
         show_demo = next(fn for fn in demo.fns.values() if fn.api_name == "show_demo")
         full_review = show_demo.outputs[1]
-        assert full_review.visible is True  # Not an inaccessible hidden API output.
-        assert full_review.show_copy_button is True
-        parent = full_review.parent
-        while parent is not None and not isinstance(parent, gr.Accordion):
-            assert parent.visible is True
-            parent = parent.parent
-        assert isinstance(parent, gr.Accordion)
-        assert parent.visible is True and parent.open is False
-        assert parent.label == "综述全文"
+        assert full_review.visible is True  # 综述全文是独立可见的 HTML 块，不是隐藏输出
+        assert isinstance(full_review, gr.HTML)
+        assert isinstance(show_demo.outputs[2], gr.Markdown)  # 参考文献
     finally:
         demo.close()
 
@@ -268,3 +262,25 @@ def test_review_downloads_include_full_text_and_no_evidence_report(tmp_path, is_
         *result["review"].split("\n\n"),
     ]
     assert document.styles["Normal"].paragraph_format.line_spacing == 1.7
+
+
+def test_review_download_includes_references_when_present(tmp_path):
+    from docx import Document
+
+    result = {
+        **app.DEMO_RESULT,
+        "query": "文献讨论了什么？",
+        "review": "综述正文。",
+        "references": [
+            "[1]《论文甲》第2页 第1段：原文一",
+            "[2]《论文乙》第3页 第5段：原文二",
+        ],
+    }
+    markdown_path, docx_path = map(Path, app.export_review(result, tmp_path, is_demo=False))
+    markdown = markdown_path.read_text("utf-8")
+    document = Document(docx_path)
+    assert "## 参考文献" in markdown
+    assert "[1]《论文甲》第2页 第1段：原文一" in markdown
+    paragraphs = [p.text for p in document.paragraphs]
+    assert "参考文献" in paragraphs
+    assert "[1]《论文甲》第2页 第1段：原文一" in paragraphs

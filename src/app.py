@@ -195,7 +195,11 @@ footer {display:none !important;}
 .reader:has(.reader-all:target) .trace-evidence-group {display:block;}
 .reader-empty h2 {font-size:16px; font-weight:600; color:#23334c; margin:0 0 14px;}
 .reader-empty p {font-size:14px; line-height:1.7; color:#506078; margin:0;}
-#review-full textarea {font-size:16px; line-height:1.7;}
+#review-full .review-full-body {max-height:60vh; overflow-y:auto; font-size:16px; line-height:1.8;}
+#review-full .review-full-body sup {font-size:0.75em; color:#3469bc;}
+#review-panel {background:#fff; border:1px solid #dde3ec; padding:16px 20px; margin-top:16px;}
+#review-panel #review-references {margin-top:12px;}
+#export-panel {margin-top:12px;}
 @media (min-width: 981px) {
  #input-panel {min-height:var(--workspace-height);}
  #input-panel > :has(> #research-question) {flex:1 1 auto !important;}
@@ -288,6 +292,11 @@ def validate_result(value) -> dict:
         "review": _text(value.get("review"), "review"),
         "sentences": [],
     }
+    references = value.get("references")
+    if references is not None:
+        if not isinstance(references, list) or len(references) > 1000:
+            raise ValueError("references 必须是数组，最多 1000 条。")
+        result["references"] = [_text(r, f"references[{k}]") for k, r in enumerate(references)]
     sentences = value.get("sentences")
     if not isinstance(sentences, list) or len(sentences) > 1000:
         raise ValueError("sentences 必须是数组，最多 1000 句。")
@@ -326,7 +335,12 @@ def validate_result(value) -> dict:
                     raise ValueError(f"{field} corpus_verified 必须是布尔值或 null。")
                 canonical["corpus_verified"] = verified
             checked.append(canonical)
-        result["sentences"].append({"sentence": sentence, "evidences": checked})
+        entry = {"sentence": sentence, "evidences": checked}
+        if item.get("structural") is not None:
+            if type(item["structural"]) is not bool:
+                raise ValueError(f"第 {i} 句 structural 必须是布尔值。")
+            entry["structural"] = item["structural"]
+        result["sentences"].append(entry)
     return result
 
 
@@ -512,7 +526,10 @@ def render_provenance(result: dict, *, anchor_prefix: str = "", workspace: bool 
                 f'<a class="trace-citation" href="#{anchor_prefix}ev-{i}-{j}">{escape(label)}</a> '
             )
         if not item["evidences"]:
-            parts.append('<p class="trace-warning">未匹配到证据，需人工核查。</p>')
+            if item.get("structural"):
+                parts.append('<p class="trace-warning">综述性扩写（非直接引用）。</p>')
+            else:
+                parts.append('<p class="trace-warning">未匹配到证据，需人工核查。</p>')
         parts.append("</article>")
     parts.append(
         '</div><div class="trace-sources" aria-label="对应原文证据"><h3>'
@@ -525,7 +542,10 @@ def render_provenance(result: dict, *, anchor_prefix: str = "", workspace: bool 
             f"<h4>句 {i} 对应的原文片段</h4>"
         )
         if not item["evidences"]:
-            parts.append('<p class="trace-warning">未匹配到证据，需人工核查。</p>')
+            if item.get("structural"):
+                parts.append('<p class="trace-warning">综述性扩写（非直接引用）。</p>')
+            else:
+                parts.append('<p class="trace-warning">未匹配到证据，需人工核查。</p>')
         for j, evidence in enumerate(item["evidences"], 1):
             label = evidence["nli_label"]
             match_detail = (
@@ -590,6 +610,7 @@ def export_review(
     query = _text(result["query"], "query")
     review = _text(result["review"], "review").replace("\r\n", "\n").replace("\r", "\n")
     paragraphs = review.split("\n\n")
+    references = result.get("references") or []
     folder = _new_export_folder(output_dir, "review-")
     md_file = folder / "review.md"
     sections = ["# 文献综述"]
@@ -597,6 +618,9 @@ def export_review(
         sections.append(f"> {DEMO_NOTICE}")
     sections.extend(["## 研究问题", _markdown(query), "## 综述正文"])
     sections.extend(_markdown(paragraph) for paragraph in paragraphs)
+    if references:
+        sections.append("## 参考文献")
+        sections.extend(html.escape(ref) for ref in references)
     md_file.write_text("\n\n".join(sections) + "\n", "utf-8")
 
     document = Document()
@@ -620,6 +644,10 @@ def export_review(
     for paragraph in paragraphs:
         document.add_paragraph(invalid_xml.sub("\ufffd", paragraph))
     docx_file = folder / "review.docx"
+    if references:
+        document.add_heading("参考文献", level=1)
+        for ref in references:
+            document.add_paragraph(invalid_xml.sub("�", ref))
     document.save(docx_file)
     return [str(md_file), str(docx_file)]
 
@@ -997,9 +1025,9 @@ def _pipeline_worker(request_file: str, result_file: str) -> int:
         if issues:
             raise ValueError("\n".join(issues))
         # Existing src-level imports need this process's cwd and sys.path to be src.
-        from pipeline import run_review
+        from pipeline import annotate_citations, run_review
 
-        result = validate_result(run_review(**request))
+        result = validate_result(annotate_citations(run_review(**request)))
         Path(result_file).write_text(
             json.dumps(result, ensure_ascii=False, allow_nan=False), "utf-8"
         )
@@ -1007,6 +1035,19 @@ def _pipeline_worker(request_file: str, result_file: str) -> int:
     except Exception as exc:
         print(f"{type(exc).__name__}: {exc}", file=sys.stderr)
         return 1
+
+
+def _review_html(review: str) -> str:
+    """把综述正文里的 [N] 转成上标 <sup>[N]</sup>（先 HTML 转义防注入）。"""
+    body = re.sub(r"\[(\d+)\]", r"<sup>[\1]</sup>", html.escape(review))
+    return f'<div class="review-full-body">{body}</div>'
+
+
+def _references_markdown(references) -> str:
+    """把参考文献列表渲染成 markdown 列表；空时给出提示。"""
+    if not references:
+        return "_暂无引用。_"
+    return "\n".join(f"- {html.escape(ref)}" for ref in references)
 
 
 def _display(result: dict, source_name: str, is_demo: bool = False) -> tuple:
@@ -1017,11 +1058,13 @@ def _display(result: dict, source_name: str, is_demo: bool = False) -> tuple:
     files = export_report(result, source_name=source_name, is_demo=is_demo)
     review_files = export_review(result, is_demo=is_demo)
     rendered = render_workspace(result, anchor_prefix=f"run-{secrets.token_hex(8)}-")
-    return status, result["review"], rendered, files, review_files
+    review_html = _review_html(result["review"])
+    references = _references_markdown(result.get("references", []))
+    return status, review_html, references, rendered, files, review_files
 
 
 def _empty_display(status: str) -> tuple:
-    return status, "", "", None, None
+    return status, "", "", "", None, None
 
 
 def _failed(exc: Exception) -> tuple:
@@ -1133,7 +1176,7 @@ def build_app(backend_python=None):
                         top_k = gr.Slider(1, 20, value=3, step=1, label="每句候选证据数")
                         threshold = gr.Slider(0, 1, value=0.7, step=0.05, label="最低匹配置信度")
             with gr.Column(elem_id="output-panel", min_width=0):
-                with gr.Column(elem_id="reading-toolbar", min_width=0):
+                with gr.Row(elem_id="reading-toolbar"):
                     status = gr.Textbox(
                         label="运行状态与来源",
                         show_label=False,
@@ -1142,26 +1185,23 @@ def build_app(backend_python=None):
                         lines=1,
                         max_lines=5,
                         elem_id="run-status",
+                        scale=5,
                     )
-                    with gr.Row(elem_id="result-actions"):
-                        with gr.Accordion("下载综述", open=False, elem_id="export-panel"):
-                            review_files = gr.File(
-                                label="Markdown / Word", file_count="multiple", interactive=False
-                            )
-                        with gr.Accordion("综述全文", open=False, elem_id="original-review-panel"):
-                            review = gr.Textbox(
-                                label="综述全文",
-                                interactive=False,
-                                lines=5,
-                                show_copy_button=True,
-                                elem_id="review-full",
-                            )
-                        clear_button = gr.Button(
-                            "清空结果", elem_id="clear-action", scale=0, min_width=84
-                        )
+                    clear_button = gr.Button(
+                        "清空结果", elem_id="clear-action", scale=0, min_width=84
+                    )
                 gr.HTML(value=EMPTY_WORKSPACE, padding=False, elem_id="empty-reader")
                 provenance = gr.HTML(label="逐句证据溯源", padding=False, elem_id="provenance")
-        outputs = [status, review, provenance, files, review_files]
+                with gr.Column(elem_id="review-panel"):
+                    gr.Markdown("### 综述全文")
+                    review = gr.HTML(elem_id="review-full", value="")
+                    gr.Markdown("### 参考文献")
+                    references = gr.Markdown(value="", elem_id="review-references")
+                with gr.Accordion("下载综述", open=False, elem_id="export-panel"):
+                    review_files = gr.File(
+                        label="Markdown / Word", file_count="multiple", interactive=False
+                    )
+        outputs = [status, review, references, provenance, files, review_files]
         shared = {"outputs": outputs, "concurrency_id": "review-actions", "concurrency_limit": 1}
 
         def generate(query, pdf, top_k, threshold, corpus_index):

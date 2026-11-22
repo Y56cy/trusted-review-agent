@@ -132,7 +132,11 @@ def test_worker_passes_multi_pdf_contract_to_backend(tmp_path, monkeypatch, mult
         return multi_result
 
     monkeypatch.setattr(app, "environment_issues", lambda: [])
-    monkeypatch.setitem(sys.modules, "pipeline", SimpleNamespace(run_review=run_review))
+    monkeypatch.setitem(
+        sys.modules,
+        "pipeline",
+        SimpleNamespace(run_review=run_review, annotate_citations=lambda r: r),
+    )
     assert app._pipeline_worker(str(request_file), str(result_file)) == 0
     assert json.loads(result_file.read_text("utf-8")) == multi_result
 
