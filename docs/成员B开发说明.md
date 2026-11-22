@@ -72,7 +72,7 @@ python src/app.py --backend-python 'D:\dachuang\trusted-review-agent\venv\Script
 2. **已有结果展示**：在“导入已有结果”中上传 JSON，然后点击“导入并展示”。原始格式必须包含 `query`、`review`、`sentences`；证据字段沿用《分工文档》。`page` 和 `para_id` 必须为正整数，概率须为 0–1 的有限数值。`source` 若存在必须是字符串；旧结果缺失时规范化为 `""`，显示“文献来源未知”，不从上传 JSON 文件名或报告 `source_name` 猜测文献。本界面导出的 `schema_version=1` envelope 也可回导。
 3. **真实生成**：在核心环境和 llama-server 已准备好后上传 1–10 篇文本型 PDF、输入问题、点击生成。界面没有后台假数据回退，前置条件缺失会显示明确错误。
 
-可直接在界面的“真实生成环境自检”中点击检查，或在命令行指定**核心环境的 Python**：
+在命令行指定**核心环境的 Python**进行检查：
 
 ```bash
 # 从 UI 环境检查另一套核心环境（与启动 UI 的 --backend-python 相同）：

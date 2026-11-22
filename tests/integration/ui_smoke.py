@@ -51,11 +51,13 @@ def main() -> None:
                     raise RuntimeError("Gradio 未在 120 秒内启动：" + log_path.read_text("utf-8"))
                 client = Client(url, verbose=False)
                 result = client.predict(api_name="/show_demo")
-                assert "手工构造" in result[0]
+                assert result[0].startswith("演示样例")
+                assert "未校验" in result[2]
                 assert len(result[3]) == 4
+                assert {Path(path).name for path in result[4]} == {"review.md", "review.docx"}
                 assert 'class="trace-columns"' in result[2]
                 assert re.search(r'href="#run-[0-9a-f]+-sentence-2"', result[2])
-                for filename in result[3]:
+                for filename in [*result[3], *result[4]]:
                     assert Path(filename).is_file() and Path(filename).stat().st_size > 0
                 diagnostics = client.predict(api_name="/check_environment")
                 assert "检查的 Python：" in diagnostics
@@ -70,7 +72,7 @@ def main() -> None:
                     for imported_html in [result[2], Path(result[3][3]).read_text("utf-8")]
                 )
                 imported = client.predict(handle_file(result[3][2]), api_name="/import_result")
-                assert "来源未核验" in imported[0] and "手工构造" in imported[0]
+                assert "来源未核验" in imported[0] and "演示样例" in imported[0]
                 assert imported[1] == result[1]
                 assert all(source in imported[2] for source in sources)
                 paragraphs = [
@@ -102,21 +104,15 @@ def main() -> None:
                 }
                 corpus_path = Path(directory) / "corpus.json"
                 corpus_path.write_text(json.dumps(corpus), "utf-8")
-                checked = client.predict(
-                    handle_file(corpus_path),
-                    handle_file(result[3][2]),
-                    api_name="/check_corpus_evidence",
-                )
-                assert "证据字段一致" in checked and "synthetic" in checked
-                assert "手工构造" in checked and "不代表" in checked
+                checked = client.predict(handle_file(corpus_path), api_name="/load_frozen_corpus")
+                assert "已加载冻结语料" in checked and "2 段" in checked
                 corpus["paragraphs"][0]["text"] = "tampered"
                 corpus_path.write_text(json.dumps(corpus), "utf-8")
                 failed_check = client.predict(
-                    handle_file(corpus_path),
-                    handle_file(result[3][2]),
-                    api_name="/check_corpus_evidence",
+                    handle_file(corpus_path), api_name="/load_frozen_corpus"
                 )
-                assert "未完成核对" in failed_check and "校验值" in failed_check
+                assert "未加载" in failed_check and "校验值" in failed_check
+                assert "未加载" in client.predict(None, api_name="/load_frozen_corpus")
                 legacy = envelope["result"]
                 for sentence in legacy["sentences"]:
                     for evidence in sentence["evidences"]:
@@ -126,13 +122,13 @@ def main() -> None:
                 legacy_import = client.predict(handle_file(legacy_path), api_name="/import_result")
                 assert "文献来源未知" in legacy_import[2]
                 cleared = client.predict(api_name="/clear_result")
-                assert cleared[1:] == ("", "", None)
+                assert cleared[1:] == ("", "", None, None)
                 failed = client.predict("", None, 3, 0.7, api_name="/generate_review")
-                assert "请输入问题" in failed[0] and failed[1:] == ("", "", None)
+                assert "请输入问题" in failed[0] and failed[1:] == ("", "", None, None)
                 bad = Path(directory) / "bad.json"
                 bad.write_text("{", "utf-8")
                 failed = client.predict(handle_file(bad), api_name="/import_result")
-                assert "不是有效" in failed[0] and failed[1:] == ("", "", None)
+                assert "不是有效" in failed[0] and failed[1:] == ("", "", None, None)
                 pdfs = []
                 for i in range(5):
                     pdf = Path(directory) / f"synthetic-{i}.pdf"
@@ -141,11 +137,11 @@ def main() -> None:
                 duplicate = client.predict(
                     "重复来源检查", [pdfs[0], pdfs[0]], 3, 0.7, api_name="/generate_review"
                 )
-                assert "重复" in duplicate[0] and duplicate[1:] == ("", "", None)
+                assert "重复" in duplicate[0] and duplicate[1:] == ("", "", None, None)
                 # Valid list reaches the selected backend, which must honestly fail
                 # without models. These minimal headers are not real PDF/model data.
                 uploaded = client.predict("多篇上传检查", pdfs, 3, 0.7, api_name="/generate_review")
-                assert "生成未完成" in uploaded[0] and uploaded[1:] == ("", "", None)
+                assert "暂时无法生成综述" in uploaded[0] and uploaded[1:] == ("", "", None, None)
                 repeated = client.predict(api_name="/show_demo")
                 assert repeated[1] == result[1]
                 old_ids = set(re.findall(r'id="([^"]+)"', result[2]))
@@ -153,8 +149,8 @@ def main() -> None:
                 assert old_ids and new_ids and old_ids.isdisjoint(new_ids)
                 assert Path(repeated[3][2]) != Path(result[3][2])
                 print(
-                    "PASS: 本地 HTTP 服务、后端环境自检、四种下载、JSON 回导、"
-                    "多来源/旧格式回导、冻结语料核对/篡改拒绝、五文件上传、同名拦截、清空、失败状态、重复操作。"
+                    "PASS: 本地 HTTP 服务、后端环境自检、两类下载、JSON 回导、"
+                    "多来源/旧格式回导、冻结语料加载/篡改拒绝、五文件上传、同名拦截、清空、失败状态、重复操作。"
                 )
                 print("仅使用手工演示数据；未验证浏览器视觉效果、真实模型或正式评测。")
             finally:
