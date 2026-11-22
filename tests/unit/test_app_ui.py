@@ -133,8 +133,10 @@ def test_reloading_result_does_not_reuse_previous_selection_anchor():
 
 def test_workspace_has_guidance_and_responsive_shell_without_export_css(tmp_path):
     assert "加载演示样例" in app.EMPTY_WORKSPACE
+    assert "<h2>综述</h2>" in app.EMPTY_WORKSPACE
+    assert "<h2>引用证据</h2>" in app.EMPTY_WORKSPACE
     assert "max-width:none" in app.UI_CSS
-    assert "#setup-fields {flex-direction:column" in app.UI_CSS
+    assert "#workspace-layout {grid-template-columns:minmax(0, 1fr);}" in app.UI_CSS
     assert "grid-template-columns:minmax(0, 2fr) minmax(0, 3fr)" in app.UI_CSS
     assert "#output-panel" not in app.CSS
     paths = app.export_report(app.DEMO_RESULT, is_demo=True)
@@ -151,10 +153,24 @@ def test_advanced_tools_are_folded_away_from_main_flow():
             item for item in components.values() if item["props"].get("label") == "高级"
         )
         assert advanced["props"]["open"] is False
-        children = next(
-            child["children"]
+
+        def element(elem_id):
+            return next(
+                item["id"]
+                for item in components.values()
+                if item["props"].get("elem_id") == elem_id
+            )
+
+        workspace = next(
+            child
             for child in config["layout"]["children"]
-            if child["id"] == advanced["id"]
+            if child["id"] == element("workspace-layout")
+        )
+        inputs, output = workspace["children"]
+        assert inputs["id"] == element("input-panel")
+        assert output["id"] == element("output-panel")
+        children = next(
+            child["children"] for child in inputs["children"] if child["id"] == advanced["id"]
         )
         labels = {components[child["id"]]["props"].get("label") for child in children}
         assert {"证据溯源报告", "结果导入", "冻结语料", "检索与匹配设置"} <= labels
@@ -214,7 +230,7 @@ def test_partial_sentence_result_keeps_complete_review_accessible():
             parent = parent.parent
         assert isinstance(parent, gr.Accordion)
         assert parent.visible is True and parent.open is False
-        assert parent.label == "原始综述全文"
+        assert parent.label == "综述全文"
     finally:
         demo.close()
 

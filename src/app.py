@@ -112,34 +112,54 @@ footer {display:none !important;}
 .workspace-header h1 {font-size:24px; font-weight:700;
   margin:0; color:#17243c;}
 #app-header {padding:0; border:0; background:transparent;}
-#input-panel {padding:14px; gap:12px;
+#workspace-layout {--workspace-height:max(400px, calc(100dvh - 114px));
+  display:grid; grid-template-columns:clamp(268px, 22vw, 328px) minmax(0, 1fr);
+  align-items:start; gap:clamp(14px, 1.6vw, 24px);}
+#input-panel {min-width:0 !important; padding:18px; gap:14px;
   background:#fff; border:1px solid #dde3ec; border-radius:10px;}
 #input-panel button, #output-panel button {box-shadow: none; border-radius:6px;}
 #input-panel .block, #output-panel .block {box-shadow: none;}
-#setup-fields {gap:16px;}
-#setup-fields > div {min-width:0 !important;}
-#utility-actions {gap:10px; align-items:center;}
-#utility-actions button {flex:0 1 auto; min-width:136px;}
+#utility-actions {gap:8px;}
+#utility-actions button {width:100%; min-width:0 !important;}
 #demo-action, #clear-action {background:transparent; color:#506078; border:1px solid #dde3ec;}
-#clear-action {white-space:nowrap; min-width:96px !important; font-size:12px;}
+#demo-action {font-size:14px;}
+#advanced-panel {padding:8px 10px;}
+#clear-action {white-space:nowrap; min-width:84px !important; font-size:13px;}
 #run-status label {background:transparent !important; border:0 !important;}
-#output-panel {padding:0; min-width:0 !important; gap:12px;}
-#reading-toolbar {align-items:center; gap:16px; padding:0;}
+#output-panel {--reader-pane-height:var(--workspace-height);
+  padding:0; min-width:0 !important; gap:8px;}
+#output-panel:has(#provenance .reader) {
+  --reader-pane-height:max(400px, calc(var(--workspace-height) - 100px));
+}
+#reading-toolbar {display:grid; grid-template-columns:minmax(0, 1fr) auto;
+  gap:8px; align-items:center;}
+#reading-toolbar > :has(> #run-status) {min-width:0 !important;}
+#result-actions {display:grid; grid-template-columns:140px 140px 84px; align-items:start; gap:8px;}
+#result-actions:has(.label-wrap.open) {grid-column:1 / -1;
+  grid-template-columns:repeat(2, minmax(0, 1fr)) 84px;}
+#workspace-layout:not(:has(#provenance .reader)) :is(#result-actions, #report-panel),
+#provenance:not(:has(.reader)),
+#output-panel:has(#provenance .reader) #empty-reader {display:none !important;}
+#reading-toolbar:has(#run-status textarea:placeholder-shown) {
+  display:none;
+}
 #run-status {border:0; padding:0; background:transparent;}
 #run-status .input-container {background:transparent !important;}
-#run-status textarea {background:transparent; border:0; padding:0; font-size:13px;
-  color:#506078; line-height:1.65; box-shadow:none;
-  background:transparent !important;}
-#export-panel {border:1px solid #dde3ec; border-radius:6px; background:#fff;}
-#provenance {padding:0; border:0; background:transparent;}
+#run-status textarea {border:0; padding:8px 10px; min-height:40px; font-size:13px; color:#506078;
+  line-height:1.65; box-shadow:none; background:#f7f8fa !important;}
+#export-panel, #original-review-panel {border:1px solid #dde3ec; border-radius:6px;
+  background:#fff; width:100%; min-width:0 !important;}
+#provenance, #empty-reader {padding:0; border:0; background:transparent;}
 .reader {background:#fff; border:1px solid #e1e6ed; border-radius:10px; overflow:hidden;}
 .reader .reader-bar {display:flex; align-items:center; justify-content:space-between;
   padding:15px 24px; border-bottom:1px solid #e6eaf0; font-size:11px; color:#778296;}
 .reader .reader-bar strong {color:#3d4f68; font-weight:500;}
-.reader .trace-columns {grid-template-columns:minmax(0, 2fr) minmax(0, 3fr); gap:0;}
-.reader .trace-review {padding:24px; max-height:78vh; font-size:16px; line-height:1.7;}
-.reader .trace-sources {padding:24px; border-left:1px solid #e6eaf0; background:#fcfdff;
-  max-height:78vh;}
+.reader .trace-columns {grid-template-columns:minmax(0, 2fr) minmax(0, 3fr);
+  gap:0; min-height:var(--reader-pane-height);}
+.reader .trace-review, .reader .trace-sources {padding:clamp(16px, 2vw, 28px);
+  max-height:var(--reader-pane-height);}
+.reader .trace-review {font-size:16px; line-height:1.7;}
+.reader .trace-sources {border-left:1px solid #e6eaf0; background:#fcfdff;}
 .reader h2.reader-title {font-size:26px; letter-spacing:-.5px; line-height:1.5;
   font-weight:650; margin:0 0 14px; color:#17243c;}
 .reader .reader-eyebrow {color:#3469bc; font-size:11px; letter-spacing:1px; margin:0 0 12px;}
@@ -173,30 +193,46 @@ footer {display:none !important;}
   margin-top:30px; color:#8792a2; font-size:11px; line-height:1.8;}
 .reader:not(:has(:target)) .trace-evidence-group:not(:first-of-type) {display:none;}
 .reader:has(.reader-all:target) .trace-evidence-group {display:block;}
-.empty-workspace {padding:20px; background:#fff; border:1px solid #e1e6ed;
-  border-radius:10px; color:#7b8797;}
-.empty-workspace h3 {font-size:17px; font-weight:600; color:#26364c; margin:0 0 4px;}
-.empty-workspace p {font-size:13px; line-height:1.9; margin:0;}
+.reader-empty h2 {font-size:16px; font-weight:600; color:#23334c; margin:0 0 14px;}
+.reader-empty p {font-size:14px; line-height:1.7; color:#506078; margin:0;}
 #review-full textarea {font-size:16px; line-height:1.7;}
+@media (min-width: 981px) {
+ #input-panel {min-height:var(--workspace-height);}
+ #input-panel > :has(> #research-question) {flex:1 1 auto !important;}
+ #research-question, #research-question > label, #research-question .input-container {
+   display:flex; flex-direction:column; flex:1 1 auto; min-height:0;
+ }
+ #research-question textarea {flex:1 1 auto; min-height:100px;}
+ #pdf-upload button[aria-dropeffect="copy"]:not(.icon-mode) {
+   height:clamp(128px, 23dvh, 260px) !important;
+ }
+}
+@media (max-width: 980px) {
+ #workspace-layout {grid-template-columns:minmax(0, 1fr);}
+ #output-panel, #output-panel:has(#provenance .reader) {--reader-pane-height:auto;}
+}
 @media (max-width: 760px) {
- #setup-fields {flex-direction:column; gap:8px;}
- #setup-fields > div {width:100%; flex-basis:auto !important;}
- #reading-toolbar {display:grid; grid-template-columns:repeat(2, minmax(0, 1fr));
-   align-items:start; gap:8px;}
- #reading-toolbar > :has(#run-status), #reading-toolbar > #run-status {
-   grid-column:1 / -1; min-width:0 !important;}
- #clear-action, #export-panel {width:100%; min-width:0 !important;}
  .workspace-header h1 {font-size:20px;}
+ #reading-toolbar {grid-template-columns:minmax(0, 1fr);}
+ #result-actions, #result-actions:has(.label-wrap.open) {
+   grid-template-columns:repeat(2, minmax(0, 1fr)) 84px;
+ }
+ #result-actions > :is(#export-panel, #original-review-panel):has(.label-wrap.open) {
+   grid-column:1 / -1;
+ }
  .reader .trace-columns {grid-template-columns:minmax(0, 1fr);}
  .reader .trace-review, .reader .trace-sources {max-height:none; padding:16px;}
  .reader .trace-sources {border-left:0; border-top:1px solid #e6eaf0;}
+ .reader-empty .trace-sources {min-height:80px;}
  .reader h2.reader-title {font-size:22px;}
  .reader .reader-bar {padding:12px 18px; gap:12px;}
 }
 """
 EMPTY_WORKSPACE = (
-    '<div class="empty-workspace"><h3>综述与引用证据</h3>'
-    "<p>生成后，点击综述中的句子即可查看对应证据。也可先加载演示样例。</p></div>"
+    '<section class="review-trace reader reader-empty" aria-label="综述与引用证据">'
+    '<div class="trace-columns"><div class="trace-review"><h2>综述</h2>'
+    "<p>添加文献并输入研究问题，或加载演示样例。</p></div>"
+    '<div class="trace-sources"><h2>引用证据</h2></div></div></section>'
 )
 
 DEMO_RESULT = {
@@ -1051,77 +1087,80 @@ def build_app(backend_python=None):
             elem_id="app-header",
             padding=False,
         )
-        with gr.Column(elem_id="input-panel"):
-            with gr.Row(elem_id="setup-fields"):
-                with gr.Column(scale=1):
-                    pdf = gr.File(
-                        label="添加文献 · PDF",
-                        file_types=[".pdf"],
-                        file_count="multiple",
-                        height=128,
+        with gr.Row(elem_id="workspace-layout"):
+            with gr.Column(elem_id="input-panel", min_width=0):
+                pdf = gr.File(
+                    label="添加文献 · PDF",
+                    file_types=[".pdf"],
+                    file_count="multiple",
+                    height=128,
+                    elem_id="pdf-upload",
+                )
+                query = gr.Textbox(
+                    label="研究问题",
+                    lines=4,
+                    placeholder="你希望从这些文献中了解什么？",
+                    elem_id="research-question",
+                )
+                with gr.Column(elem_id="utility-actions"):
+                    submit = gr.Button("生成综述", variant="primary")
+                    demo_button = gr.Button("加载演示样例", elem_id="demo-action")
+                with gr.Accordion("高级", open=False, elem_id="advanced-panel"):
+                    with gr.Accordion("证据溯源报告", open=False, elem_id="report-panel"):
+                        files = gr.File(
+                            label="Markdown / CSV / JSON / HTML",
+                            file_count="multiple",
+                            interactive=False,
+                        )
+                    with gr.Accordion("结果导入", open=False):
+                        imported = gr.File(label="综述结果文件（JSON）", file_types=[".json"])
+                        import_button = gr.Button("导入并展示")
+                    with gr.Accordion("冻结语料", open=False):
+                        gr.Markdown("上传后，生成综述时会自动核对引用证据。")
+                        corpus_file = gr.File(
+                            label="冻结语料文件（JSON）",
+                            file_types=[".json"],
+                            elem_id="corpus-file",
+                        )
+                        corpus_status = gr.Textbox(
+                            label="冻结语料状态",
+                            value="未加载冻结语料。",
+                            interactive=False,
+                            elem_id="corpus-status",
+                        )
+                        corpus_state = gr.State()
+                    with gr.Accordion("检索与匹配设置", open=False):
+                        top_k = gr.Slider(1, 20, value=3, step=1, label="每句候选证据数")
+                        threshold = gr.Slider(0, 1, value=0.7, step=0.05, label="最低匹配置信度")
+            with gr.Column(elem_id="output-panel", min_width=0):
+                with gr.Column(elem_id="reading-toolbar", min_width=0):
+                    status = gr.Textbox(
+                        label="运行状态与来源",
+                        show_label=False,
+                        placeholder=" ",
+                        interactive=False,
+                        lines=1,
+                        max_lines=5,
+                        elem_id="run-status",
                     )
-                with gr.Column(scale=1):
-                    query = gr.Textbox(
-                        label="研究问题",
-                        lines=3,
-                        placeholder="你希望从这些文献中了解什么？",
-                    )
-            with gr.Row(elem_id="utility-actions"):
-                submit = gr.Button("生成综述", variant="primary")
-                demo_button = gr.Button("加载演示样例", elem_id="demo-action")
-        with gr.Column(elem_id="output-panel"):
-            with gr.Row(elem_id="reading-toolbar"):
-                status = gr.Textbox(
-                    label="运行状态与来源",
-                    show_label=False,
-                    value="尚未加载结果",
-                    interactive=False,
-                    lines=2,
-                    max_lines=5,
-                    elem_id="run-status",
-                    scale=5,
-                )
-                clear_button = gr.Button("清空结果", elem_id="clear-action", scale=0, min_width=80)
-                with gr.Accordion("下载综述", open=False, elem_id="export-panel"):
-                    review_files = gr.File(
-                        label="Markdown / Word", file_count="multiple", interactive=False
-                    )
-            provenance = gr.HTML(
-                value=EMPTY_WORKSPACE, label="逐句证据溯源", padding=False, elem_id="provenance"
-            )
-            with gr.Accordion("原始综述全文", open=False, elem_id="original-review-panel"):
-                review = gr.Textbox(
-                    label="原始综述全文（完整保留）",
-                    interactive=False,
-                    lines=5,
-                    show_copy_button=True,
-                    elem_id="review-full",
-                )
-        with gr.Accordion("高级", open=False, elem_id="advanced-panel"):
-            with gr.Accordion("证据溯源报告", open=False):
-                files = gr.File(
-                    label="Markdown / CSV / JSON / HTML", file_count="multiple", interactive=False
-                )
-            with gr.Accordion("结果导入", open=False):
-                imported = gr.File(label="综述结果文件（JSON）", file_types=[".json"])
-                import_button = gr.Button("导入并展示")
-            with gr.Accordion("冻结语料", open=False):
-                gr.Markdown("上传后，生成综述时会自动核对引用证据。")
-                corpus_file = gr.File(
-                    label="冻结语料文件（JSON）",
-                    file_types=[".json"],
-                    elem_id="corpus-file",
-                )
-                corpus_status = gr.Textbox(
-                    label="冻结语料状态",
-                    value="未加载冻结语料。",
-                    interactive=False,
-                    elem_id="corpus-status",
-                )
-                corpus_state = gr.State()
-            with gr.Accordion("检索与匹配设置", open=False):
-                top_k = gr.Slider(1, 20, value=3, step=1, label="每句候选证据数")
-                threshold = gr.Slider(0, 1, value=0.7, step=0.05, label="最低匹配置信度")
+                    with gr.Row(elem_id="result-actions"):
+                        with gr.Accordion("下载综述", open=False, elem_id="export-panel"):
+                            review_files = gr.File(
+                                label="Markdown / Word", file_count="multiple", interactive=False
+                            )
+                        with gr.Accordion("综述全文", open=False, elem_id="original-review-panel"):
+                            review = gr.Textbox(
+                                label="综述全文",
+                                interactive=False,
+                                lines=5,
+                                show_copy_button=True,
+                                elem_id="review-full",
+                            )
+                        clear_button = gr.Button(
+                            "清空结果", elem_id="clear-action", scale=0, min_width=84
+                        )
+                gr.HTML(value=EMPTY_WORKSPACE, padding=False, elem_id="empty-reader")
+                provenance = gr.HTML(label="逐句证据溯源", padding=False, elem_id="provenance")
         outputs = [status, review, provenance, files, review_files]
         shared = {"outputs": outputs, "concurrency_id": "review-actions", "concurrency_limit": 1}
 
