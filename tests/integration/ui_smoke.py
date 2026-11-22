@@ -51,7 +51,7 @@ def main() -> None:
                     raise RuntimeError("Gradio 未在 120 秒内启动：" + log_path.read_text("utf-8"))
                 client = Client(url, verbose=False)
                 result = client.predict(api_name="/show_demo")
-                assert "手工构造" in result[0]
+                assert result[0].startswith("演示样例")
                 assert "未校验" in result[2]
                 assert len(result[3]) == 4
                 assert {Path(path).name for path in result[4]} == {"review.md", "review.docx"}
@@ -72,7 +72,7 @@ def main() -> None:
                     for imported_html in [result[2], Path(result[3][3]).read_text("utf-8")]
                 )
                 imported = client.predict(handle_file(result[3][2]), api_name="/import_result")
-                assert "来源未核验" in imported[0] and "手工构造" in imported[0]
+                assert "来源未核验" in imported[0] and "演示样例" in imported[0]
                 assert imported[1] == result[1]
                 assert all(source in imported[2] for source in sources)
                 paragraphs = [
@@ -141,7 +141,7 @@ def main() -> None:
                 # Valid list reaches the selected backend, which must honestly fail
                 # without models. These minimal headers are not real PDF/model data.
                 uploaded = client.predict("多篇上传检查", pdfs, 3, 0.7, api_name="/generate_review")
-                assert "生成未完成" in uploaded[0] and uploaded[1:] == ("", "", None, None)
+                assert "暂时无法生成综述" in uploaded[0] and uploaded[1:] == ("", "", None, None)
                 repeated = client.predict(api_name="/show_demo")
                 assert repeated[1] == result[1]
                 old_ids = set(re.findall(r'id="([^"]+)"', result[2]))

@@ -17,8 +17,9 @@ def isolated_exports(tmp_path, monkeypatch):
 
 def test_demo_callback_is_explicitly_synthetic():
     status, review, rendered, paths, review_paths = app.show_demo()
-    assert app.DEMO_NOTICE in status
-    assert "不是正式评测" in status
+    assert status.startswith("演示样例")
+    assert "正式评测" not in status
+    assert "模型概率" not in rendered
     assert review == app.DEMO_RESULT["review"]
     assert re.search(r'id="run-[0-9a-f]+-ev-1-1"', rendered)
     assert all(Path(path).is_file() for path in [*paths, *review_paths])
@@ -95,7 +96,7 @@ def test_build_blocks_wires_callbacks_and_serializes_actions(monkeypatch):
             assert len(functions[name].outputs) == 5
         assert functions["generate_review"].inputs[1].file_count == "multiple"
         assert functions["clear_result"].fn()[1:] == ("", "", None, None)
-        assert "手工构造" in functions["show_demo"].fn()[0]
+        assert functions["show_demo"].fn()[0].startswith("演示样例")
         diagnostics = functions["check_environment"]
         assert diagnostics.concurrency_id == "review-actions"
         assert diagnostics.concurrency_limit == 1
@@ -156,7 +157,15 @@ def test_advanced_tools_are_folded_away_from_main_flow():
             if child["id"] == advanced["id"]
         )
         labels = {components[child["id"]]["props"].get("label") for child in children}
-        assert {"证据溯源报告", "结果导入", "冻结语料", "检索与匹配设置", "生成环境自检"} <= labels
+        assert {"证据溯源报告", "结果导入", "冻结语料", "检索与匹配设置"} <= labels
+        assert "生成环境自检" not in labels
+        copy = " ".join(
+            item["props"].get("value", "")
+            for item in components.values()
+            if item["type"] in {"markdown", "html"}
+        )
+        assert "MiB" not in copy
+        assert "句级匹配仅提供证据支持" not in copy
         assert any(
             item["props"].get("label") == "下载综述"
             and item["id"] not in {child["id"] for child in children}

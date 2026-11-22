@@ -34,8 +34,7 @@ MAX_PDF_BYTES = 50 * 1024 * 1024
 MAX_PDF_FILES = 10
 MAX_TOTAL_PDF_BYTES = 200 * 1024 * 1024
 UNKNOWN_SOURCE = "文献来源未知"
-REVIEW_NOTICE = "句级匹配仅提供证据支持与人工核查依据，不证明事实正确。"
-NOTICE = f"{REVIEW_NOTICE} NLI 概率不是事实准确率。"
+NOTICE = "句级匹配仅提供证据支持与人工核查依据，不证明事实正确。 NLI 概率不是事实准确率。"
 MATCH_LABELS = {"entailment": "支持", "neutral": "中立", "contradiction": "矛盾"}
 CORPUS_STATUS = {
     True: ("corpus-verified", "✓ 已通过语料一致性校验"),
@@ -179,7 +178,6 @@ footer {display:none !important;}
 .empty-workspace h3 {font-size:17px; font-weight:600; color:#26364c; margin:0 0 4px;}
 .empty-workspace p {font-size:13px; line-height:1.9; margin:0;}
 #review-full textarea {font-size:16px; line-height:1.7;}
-#boundary p, #upload-note p {font-size:12px; line-height:1.7; color:#506078;}
 @media (max-width: 760px) {
  #setup-fields {flex-direction:column; gap:8px;}
  #setup-fields > div {width:100%; flex-basis:auto !important;}
@@ -202,31 +200,31 @@ EMPTY_WORKSPACE = (
 )
 
 DEMO_RESULT = {
-    "query": "【演示】如何查看逐句证据？",
-    "review": "这是一句用于展示溯源交互的示例。另一句示例暂时没有匹配证据。",
+    "query": "【演示】延长开放时间对图书馆使用有什么影响？",
+    "review": "延长开放时间后，图书馆晚间到访增加。现有材料还无法判断周末到访是否也有变化。",
     "sentences": [
         {
-            "sentence": "这是一句用于展示溯源交互的示例。",
+            "sentence": "延长开放时间后，图书馆晚间到访增加。",
             "evidences": [
                 {
                     "page": 1,
                     "para_id": 1,
-                    "source": "演示文献甲（手工构造）",
-                    "text": "【手工构造的演示原文】点击证据标记后，这个原文片段会被定位并高亮。",
+                    "source": "演示文献甲 · 开放时间调整记录",
+                    "text": "闭馆时间延后一小时后，工作日晚间的入馆人数较调整前有所增加。",
                     "nli_label": "entailment",
                     "nli_prob": 0.85,
                 },
                 {
                     "page": 2,
                     "para_id": 1,
-                    "source": "演示文献乙（手工构造）",
-                    "text": "【第二篇手工构造原文】段号同为 1，但文献名不同，不能合并为同一证据。",
+                    "source": "演示文献乙 · 读者使用情况调查",
+                    "text": "部分受访读者表示，闭馆时间延后后，他们更常在晚间到馆阅读或自习。",
                     "nli_label": "entailment",
                     "nli_prob": 0.78,
                 },
             ],
         },
-        {"sentence": "另一句示例暂时没有匹配证据。", "evidences": []},
+        {"sentence": "现有材料还无法判断周末到访是否也有变化。", "evidences": []},
     ],
 }
 _EXPORT_DIR: tempfile.TemporaryDirectory | None = None
@@ -494,7 +492,11 @@ def render_provenance(result: dict, *, anchor_prefix: str = "", workspace: bool 
             parts.append('<p class="trace-warning">未匹配到证据，需人工核查。</p>')
         for j, evidence in enumerate(item["evidences"], 1):
             label = evidence["nli_label"]
-            match_detail = f"匹配关系：{MATCH_LABELS[label]}" if workspace else f"NLI 标签：{label}"
+            match_detail = (
+                f"匹配关系：{MATCH_LABELS[label]}"
+                if workspace
+                else f"NLI 标签：{label}；模型概率：{evidence['nli_prob']:.3f}"
+            )
             status_class, status_text = CORPUS_STATUS[evidence.get("corpus_verified")]
             parts.append(
                 f'<article id="{anchor_prefix}ev-{i}-{j}" class="trace-evidence" tabindex="0">'
@@ -507,8 +509,7 @@ def render_provenance(result: dict, *, anchor_prefix: str = "", workspace: bool 
                 f'<span class="evidence-badge {status_class}">{status_text}</span></div>'
                 f'<p class="trace-text evidence-excerpt">{escape(evidence["text"])}</p>'
                 "<details><summary>查看匹配详情</summary>"
-                f'<p class="trace-meta">{match_detail}；'
-                f"模型概率：{evidence['nli_prob']:.3f}</p></details></article>"
+                f'<p class="trace-meta">{match_detail}</p></details></article>'
             )
         parts.append("</section>")
     parts.append("</div></div></section>")
@@ -976,13 +977,7 @@ def _display(result: dict, source_name: str, is_demo: bool = False) -> tuple:
     result = validate_result(result)
     sentence_count = len(result["sentences"])
     matched_count = sum(bool(item["evidences"]) for item in result["sentences"])
-    status = (
-        f"{source_name} · "
-        f"共 {sentence_count} 句，其中 {matched_count} 句返回证据，"
-        f"{sentence_count - matched_count} 句未返回证据。这里只统计结果数量，不是正式评测。"
-    )
-    if is_demo:
-        status = DEMO_NOTICE + "\n" + status
+    status = f"{source_name} · {sentence_count} 句综述，{matched_count} 句有对应证据"
     files = export_report(result, source_name=source_name, is_demo=is_demo)
     review_files = export_review(result, is_demo=is_demo)
     rendered = render_workspace(result, anchor_prefix=f"run-{secrets.token_hex(8)}-")
@@ -1001,7 +996,7 @@ def _failed(exc: Exception) -> tuple:
 def import_result(path):
     try:
         if not path:
-            raise ValueError("请先选择 pipeline 结果 JSON。")
+            raise ValueError("请先选择要导入的综述文件。")
         result, metadata = load_result(path)
         # Uploaded result files cannot attest to a check made in this session.
         return _display(check_corpus_evidence(result, None), **metadata)
@@ -1010,13 +1005,13 @@ def import_result(path):
 
 
 def show_demo():
-    return _display(check_corpus_evidence(DEMO_RESULT, None), "内置手工演示样例", is_demo=True)
+    return _display(check_corpus_evidence(DEMO_RESULT, None), "演示样例", is_demo=True)
 
 
 def generate_review(
     query, pdf_paths, top_k, nli_threshold, *, backend_python=None, corpus_index=None
 ):
-    yield _empty_display("正在生成综述并匹配证据，最多等待 10 分钟……")
+    yield _empty_display("正在生成综述……")
     try:
         result = run_pipeline(query, pdf_paths, top_k, nli_threshold, backend_python=backend_python)
         result = check_corpus_evidence(result, corpus_index)
@@ -1024,7 +1019,7 @@ def generate_review(
         yield _display(result, f"本地生成 · {len(names)} 篇 PDF：" + "、".join(names))
     except ReviewBackendError as exc:
         print(exc, file=sys.stderr)
-        yield _empty_display("生成未完成。请在「高级」中检查本地生成环境，或先加载演示样例。")
+        yield _empty_display("暂时无法生成综述，请稍后重试。也可以先加载演示样例。")
     except (ValueError, OSError) as exc:
         yield _failed(exc)
 
@@ -1064,11 +1059,6 @@ def build_app(backend_python=None):
                         file_types=[".pdf"],
                         file_count="multiple",
                         height=128,
-                    )
-                    gr.Markdown(
-                        "上传 1–10 篇文本 PDF，文件名不可重复。"
-                        "每篇最多 50 MiB、总计最多 200 MiB，以减轻本地生成负担。",
-                        elem_id="upload-note",
                     )
                 with gr.Column(scale=1):
                     query = gr.Textbox(
@@ -1113,15 +1103,12 @@ def build_app(backend_python=None):
                     label="Markdown / CSV / JSON / HTML", file_count="multiple", interactive=False
                 )
             with gr.Accordion("结果导入", open=False):
-                imported = gr.File(label="综述结果 JSON（上限 5 MiB）", file_types=[".json"])
+                imported = gr.File(label="综述结果文件（JSON）", file_types=[".json"])
                 import_button = gr.Button("导入并展示")
             with gr.Accordion("冻结语料", open=False):
-                gr.Markdown(
-                    "可选。上传一份冻结语料后，当前会话后续生成的证据会自动核对"
-                    "文献名、页码、段号和原文片段。"
-                )
+                gr.Markdown("上传后，生成综述时会自动核对引用证据。")
                 corpus_file = gr.File(
-                    label="冻结语料 corpus.json（上限 5 MiB）",
+                    label="冻结语料文件（JSON）",
                     file_types=[".json"],
                     elem_id="corpus-file",
                 )
@@ -1135,14 +1122,6 @@ def build_app(backend_python=None):
             with gr.Accordion("检索与匹配设置", open=False):
                 top_k = gr.Slider(1, 20, value=3, step=1, label="每句候选证据数")
                 threshold = gr.Slider(0, 1, value=0.7, step=0.05, label="最低匹配置信度")
-            with gr.Accordion("生成环境自检", open=False):
-                check_button = gr.Button("检查本地生成环境")
-                diagnostics = gr.Textbox(label="自检结果", interactive=False, lines=8)
-        gr.Markdown(
-            f"{REVIEW_NOTICE} 匹配置信度表示模型对文本匹配的判断。"
-            "高亮定位的是文本片段，请结合文献原文核查。",
-            elem_id="boundary",
-        )
         outputs = [status, review, provenance, files, review_files]
         shared = {"outputs": outputs, "concurrency_id": "review-actions", "concurrency_limit": 1}
 
@@ -1176,9 +1155,12 @@ def build_app(backend_python=None):
             concurrency_id="review-actions",
             concurrency_limit=1,
         )
-        check_button.click(
-            lambda: check_environment(backend_python),
-            outputs=[diagnostics],
+
+        def diagnose() -> str:
+            return check_environment(backend_python)
+
+        gr.api(
+            diagnose,
             api_name="check_environment",
             concurrency_id="review-actions",
             concurrency_limit=1,
