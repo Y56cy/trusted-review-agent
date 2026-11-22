@@ -40,7 +40,7 @@
 
 ## 环境要求
 - Python 3.12
-- llama.cpp（CPU 版即可跑通，GPU 版可选）
+- llama.cpp（CUDA 版走 GPU 加速；纯 CPU 可用 `-ngl 0` 但慢）
 - Qwen2.5-7B-Instruct Q4_K_M GGUF 模型
 - BGE `BAAI/bge-small-zh-v1.5`（本地路径 `models/bge-small-zh-v1.5`，经 ModelScope 下载）
 - `transformers==4.46.3`、`sentence-transformers==3.2.1`（**版本组合已锁定，升级会破坏 BGE 和 NLI 的兼容性**）
@@ -56,11 +56,16 @@ pip install -r requirements.txt
 
 ## 模型下载
 - BGE 向量模型：通过 ModelScope 下载 `BAAI/bge-small-zh-v1.5` 到 `models/bge-small-zh-v1.5`
-- LLM：下载 Qwen2.5-7B-Instruct Q4_K_M GGUF 到 `D:\llama`（或任意路径）
+- LLM：下载 Qwen2.5-7B-Instruct Q4_K_M GGUF（分卷 `00001-of-00002` / `00002-of-00002`，放同一目录）
+- llama.cpp：从 [官方 Releases](https://github.com/ggml-org/llama.cpp/releases) 下载 CUDA 版，两个包都要解压到同一目录：
+  - `llama-bXXXXX-bin-win-cuda-12.4-x64.zip`（主程序，含 `llama-server.exe`）
+  - `cudart-llama-bin-win-cuda-12.4-x64.zip`（CUDA 运行库，缺它启动会报"缺 DLL"）
 
 ## 运行
-1. 启动 llama-server：
-   .\llama-server.exe -m qwen2.5-7b-instruct-q4_k_m-00001-of-00002.gguf -ngl 0 --port 8080
+1. 启动 llama-server（GPU 加速）：
+   .\llama-server.exe -m <模型完整路径>\qwen2.5-7b-instruct-q4_k_m-00001-of-00002.gguf -ngl 99 --port 8080
+   - `-m` 要用模型文件**完整路径**（只写文件名会报 file not found）。
+   - `-ngl 99` = 全层卸载到显卡；日志出现 `offloaded 28/28 layers to GPU` 即生效。纯 CPU 环境改 `-ngl 0`（慢）。
 2. 运行端到端原型（中期检查 demo，默认读 `data/corpus/` 多篇语料）：
    python src/pipeline.py
    语料就位后即可演示「多篇文献库 → 检索 → 综述生成 → 逐句溯源」。
@@ -110,7 +115,7 @@ python src/app.py
 2. 句级匹配只提供证据支持与人工核查依据，不声称证明事实正确
 3. PDF 解析只面向文本型 PDF，不处理扫描件 OCR
 4. BGE 和 NLI 模型走 ModelScope 下载，代码指向本地路径
-5. llama.cpp 暂用 CPU 版，GPU 版暂缓
+5. llama.cpp 用 CUDA 版走 GPU 加速（`-ngl 99`）；纯 CPU 仅作降级兜底
 6. git 提交不 `git add .`，不提交模型和虚拟环境
 7. `transformers==4.46.3` 版本锁定，不升级
 8. 文献库方向：大模型/RAG 主题，中期演示 5 篇 PDF；文献名用文件名
